@@ -13,13 +13,14 @@ const server = http.createServer(app);
 // Get port from environment or default to 3001
 const PORT = process.env.PORT || 3001;
 
+
+
 // CORS configuration for Railway deployment
 const corsOrigins = [
   'http://localhost:3000',
   'https://chesschat-web-timantibes-1614-tims-projects-347b2ae0.vercel.app',
-  // Add your actual Vercel domain here
-  'https://chesschat-web.vercel.app',
-  // Add any other frontend domains you might use
+  'https://chesschat-web-git-main-tims-projects-347b2ae0.vercel.app', // Add this line
+  'https://chesschat-web.vercel.app', // Keep this for future custom domain
 ];
 
 const io = socketIo(server, {
