@@ -1,4 +1,4 @@
-// src/components/GameScreen.js - Room-only version with friends system removed
+// src/components/GameScreen.js - Complete simplified with code matching system
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
@@ -119,28 +119,20 @@ function GameStatusIndicator({ status }) {
   );
 }
 
-// Enhanced Room Management Component
-function RoomModal({ isVisible, onClose, currentUser }) {
-  const [activeTab, setActiveTab] = useState('create');
-  const [roomCode, setRoomCode] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [isJoining, setIsJoining] = useState(false);
+// Simplified Match Code Modal
+function MatchModal({ isVisible, onClose, currentUser }) {
+  const [matchCode, setMatchCode] = useState('');
+  const [isEntering, setIsEntering] = useState(false);
+  const [waitingMessage, setWaitingMessage] = useState('');
 
-  const handleCreateRoom = (e) => {
+  const handleEnterCode = (e) => {
     e.preventDefault();
-    if (roomCode.trim().length >= 3) {
-      setIsCreating(true);
-      socketService.createGameRoom(roomCode.trim());
-      setTimeout(() => setIsCreating(false), 2000);
-    }
-  };
-
-  const handleJoinRoom = (e) => {
-    e.preventDefault();
-    if (roomCode.trim().length >= 3) {
-      setIsJoining(true);
-      socketService.joinGameRoom(roomCode.trim());
-      setTimeout(() => setIsJoining(false), 2000);
+    if (matchCode.trim().length >= 3) {
+      console.log('🔑 FRONTEND: Entering match code:', matchCode.trim());
+      
+      setIsEntering(true);
+      socketService.enterMatchCode(matchCode.trim());
+      setTimeout(() => setIsEntering(false), 2000);
     }
   };
 
@@ -150,16 +142,28 @@ function RoomModal({ isVisible, onClose, currentUser }) {
     const numbers = Math.floor(Math.random() * 1000);
     
     const randomCode = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${numbers}`;
-    setRoomCode(randomCode);
+    setMatchCode(randomCode);
   };
 
   // Reset form when modal opens/closes
   useEffect(() => {
     if (isVisible) {
-      setRoomCode('');
-      setActiveTab('create');
+      setMatchCode('');
+      setWaitingMessage('');
     }
   }, [isVisible]);
+
+  // Listen for code entered responses
+  useEffect(() => {
+    const handleCodeEntered = (data) => {
+      if (data.waiting) {
+        setWaitingMessage(data.message);
+      }
+    };
+
+    socketService.on('code-entered', handleCodeEntered);
+    return () => socketService.off('code-entered', handleCodeEntered);
+  }, []);
 
   if (!isVisible) return null;
 
@@ -167,7 +171,7 @@ function RoomModal({ isVisible, onClose, currentUser }) {
     <div className="friends-overlay">
       <div className="friends-panel">
         <div className="friends-header">
-          <h2 className="friends-title">Play Chess</h2>
+          <h2 className="friends-title">Find a Match</h2>
           <button onClick={onClose} className="close-button">×</button>
         </div>
 
@@ -185,142 +189,73 @@ function RoomModal({ isVisible, onClose, currentUser }) {
               Welcome, {currentUser?.username}!
             </h3>
             <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
-              Create a room and share the code with a friend, or join an existing room.
+              Enter the same code as your friend to start a game together.
             </p>
           </div>
 
-          {/* Tab Buttons */}
-          <div style={{ 
-            display: 'flex', 
-            marginBottom: '20px', 
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '8px 8px 0 0',
-            overflow: 'hidden'
-          }}>
-            <button
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                background: activeTab === 'create' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: activeTab === 'create' ? '600' : '400',
-                transition: 'all 0.2s'
-              }}
-              onClick={() => {
-                setActiveTab('create');
-                setRoomCode('');
-              }}
-            >
-              🏠 Create Room
-            </button>
-            <button
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                background: activeTab === 'join' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                border: 'none',
-                color: 'white',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: activeTab === 'join' ? '600' : '400',
-                transition: 'all 0.2s'
-              }}
-              onClick={() => {
-                setActiveTab('join');
-                setRoomCode('');
-              }}
-            >
-              🚪 Join Room
-            </button>
-          </div>
+          {/* Single form for entering code */}
+          <div className="add-friend-section">
+            <h3 className="section-title">Enter Match Code</h3>
+            <p style={{ color: '#9ca3af', fontSize: '14px', marginBottom: '16px' }}>
+              Both you and your friend enter the same code to match
+            </p>
+            
+            <form onSubmit={handleEnterCode} className="add-friend-form">
+              <input
+                type="text"
+                value={matchCode}
+                onChange={(e) => setMatchCode(e.target.value)}
+                placeholder="Enter any code (e.g., chess123)"
+                className="friend-input"
+                minLength={3}
+                maxLength={20}
+                disabled={isEntering}
+                style={{ fontSize: '16px' }}
+              />
+              <button
+                type="submit"
+                className="add-friend-button"
+                disabled={isEntering || matchCode.trim().length < 3}
+                style={{ minWidth: '120px' }}
+              >
+                {isEntering ? 'Matching...' : '🎮 Find Match'}
+              </button>
+            </form>
 
-          {/* Create Room Tab */}
-          {activeTab === 'create' && (
-            <div className="add-friend-section">
-              <h3 className="section-title">Create a New Room</h3>
-              <p style={{ color: '#9ca3af', fontSize: '14px', marginBottom: '16px' }}>
-                Choose a room name and share it with your friend
-              </p>
-              
-              <form onSubmit={handleCreateRoom} className="add-friend-form">
-                <input
-                  type="text"
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value)}
-                  placeholder="Enter room name (e.g., MyRoom123)"
-                  className="friend-input"
-                  minLength={3}
-                  maxLength={20}
-                  disabled={isCreating}
-                  style={{ fontSize: '16px' }}
-                />
-                <button
-                  type="submit"
-                  className="add-friend-button"
-                  disabled={isCreating || roomCode.trim().length < 3}
-                  style={{ minWidth: '120px' }}
-                >
-                  {isCreating ? 'Creating...' : '🏠 Create'}
-                </button>
-              </form>
+            <div style={{ textAlign: 'center', margin: '16px 0' }}>
+              <button
+                onClick={generateRandomCode}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                🎲 Generate Random Code
+              </button>
+            </div>
 
-              <div style={{ textAlign: 'center', margin: '16px 0' }}>
-                <button
-                  onClick={generateRandomCode}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    color: 'white',
-                    padding: '8px 16px',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    transition: 'all 0.2s'
-                  }}
-                >
-                  🎲 Generate Random Name
-                </button>
+            {/* Waiting message */}
+            {waitingMessage && (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.2)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginTop: '16px',
+                textAlign: 'center'
+              }}>
+                <p style={{ color: '#f59e0b', margin: 0, fontSize: '14px' }}>
+                  {waitingMessage}
+                </p>
               </div>
-            </div>
-          )}
-
-          {/* Join Room Tab */}
-          {activeTab === 'join' && (
-            <div className="add-friend-section">
-              <h3 className="section-title">Join an Existing Room</h3>
-              <p style={{ color: '#9ca3af', fontSize: '14px', marginBottom: '16px' }}>
-                Enter the room name your friend shared with you
-              </p>
-              
-              <form onSubmit={handleJoinRoom} className="add-friend-form">
-                <input
-                  type="text"
-                  value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value)}
-                  placeholder="Enter room name"
-                  className="friend-input"
-                  minLength={3}
-                  maxLength={20}
-                  disabled={isJoining}
-                  style={{ fontSize: '16px' }}
-                />
-                <button
-                  type="submit"
-                  className="add-friend-button"
-                  disabled={isJoining || roomCode.trim().length < 3}
-                  style={{ 
-                    minWidth: '120px',
-                    background: '#10b981' 
-                  }}
-                >
-                  {isJoining ? 'Joining...' : '🚪 Join'}
-                </button>
-              </form>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Instructions */}
           <div style={{ 
@@ -334,10 +269,10 @@ function RoomModal({ isVisible, onClose, currentUser }) {
               How it works:
             </h4>
             <ul style={{ color: '#9ca3af', fontSize: '13px', margin: 0, paddingLeft: '16px' }}>
-              <li>Create a room with any name you want</li>
-              <li>Share the room name with your friend</li>
-              <li>They join using the same room name</li>
-              <li>Game starts automatically when both players connect!</li>
+              <li>You and your friend enter the same code</li>
+              <li>First person waits, second person joins</li>
+              <li>Game starts automatically when both enter the code!</li>
+              <li>Use any code you want - make it unique to avoid strangers</li>
             </ul>
           </div>
         </div>
@@ -365,8 +300,7 @@ export default function GameScreen({ currentUser }) {
   // UI state
   const [notification, setNotification] = useState(null);
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
-  const [showRoomModal, setShowRoomModal] = useState(false);
-  const [currentRoomCode, setCurrentRoomCode] = useState(null);
+  const [showMatchModal, setShowMatchModal] = useState(false);
 
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -412,25 +346,22 @@ export default function GameScreen({ currentUser }) {
 
   // Socket event handlers
   useEffect(() => {
-    // Room management events
-    const handleRoomCreated = (data) => {
-      setCurrentRoomCode(data.roomCode);
-      showNotification(data.message, 'success');
-    };
-
-    const handleRoomCancelled = (data) => {
-      setCurrentRoomCode(null);
-      showNotification(`Room ${data.roomCode} cancelled`, 'info');
+    // Code matching events
+    const handleCodeEntered = (data) => {
+      console.log('🔑 FRONTEND: Code entered response:', data);
+      if (data.waiting) {
+        showNotification(data.message, 'info');
+      }
     };
 
     // Game events
     const handleMatchFound = (data) => {
+      console.log('🎮 FRONTEND: Match found:', data);
       setRoomId(data.roomId);
       setPlayerColor(data.color);
       setOpponent(data.opponent);
       setGameStatus('playing');
-      setShowRoomModal(false);
-      setCurrentRoomCode(null);
+      setShowMatchModal(false);
       
       const chess = new Chess(data.gameState.fen);
       setGameChess(chess);
@@ -444,6 +375,7 @@ export default function GameScreen({ currentUser }) {
     };
 
     const handleMoveMade = (data) => {
+      console.log('♟️ FRONTEND: Move made');
       const chess = new Chess(data.fen);
       setGameChess(chess);
       setBoard(fenToBoard(data.fen));
@@ -502,12 +434,12 @@ export default function GameScreen({ currentUser }) {
     };
 
     const handleError = (data) => {
+      console.log('❌ FRONTEND: Error:', data);
       showNotification(`Error: ${data.message}`, 'error');
     };
 
     // Add event listeners
-    socketService.on('room-created', handleRoomCreated);
-    socketService.on('room-cancelled', handleRoomCancelled);
+    socketService.on('code-entered', handleCodeEntered);
     socketService.on('match-found', handleMatchFound);
     socketService.on('move-made', handleMoveMade);
     socketService.on('invalid-move', handleInvalidMove);
@@ -517,8 +449,7 @@ export default function GameScreen({ currentUser }) {
 
     return () => {
       // Cleanup event listeners
-      socketService.off('room-created', handleRoomCreated);
-      socketService.off('room-cancelled', handleRoomCancelled);
+      socketService.off('code-entered', handleCodeEntered);
       socketService.off('match-found', handleMatchFound);
       socketService.off('move-made', handleMoveMade);
       socketService.off('invalid-move', handleInvalidMove);
@@ -621,13 +552,6 @@ export default function GameScreen({ currentUser }) {
     showNotification('Practice game started', 'info');
   };
 
-  const handleCancelRoom = () => {
-    if (currentRoomCode) {
-      socketService.cancelRoom(currentRoomCode);
-      setCurrentRoomCode(null);
-    }
-  };
-
   const resignGame = () => {
     if (window.confirm("Are you sure you want to resign?")) {
       if (roomId && playerColor) {
@@ -681,36 +605,22 @@ export default function GameScreen({ currentUser }) {
       <div className="header">
         <button 
           className={`header-button start-match-button ${gameStatus === 'playing' ? 'disabled-button' : ''}`}
-          onClick={() => setShowRoomModal(true)}
+          onClick={() => setShowMatchModal(true)}
           disabled={gameStatus === 'playing'}
         >
-          {currentRoomCode ? `Room: ${currentRoomCode}` : 'Create/Join Room'}
+          Find Match
         </button>
 
         <div className="title-container">
           <div className="title">ChessChat</div>
           <div className="status">
-            {gameStatus === 'idle' && `Welcome ${currentUser?.username}! Create or join a room to play.`}
+            {gameStatus === 'idle' && `Welcome ${currentUser?.username}! Enter a match code to play.`}
             {gameStatus === 'playing' && getCurrentPlayerName()}
             {gameStatus === 'ended' && `${gameWinner} wins!`}
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          {currentRoomCode && (
-            <button 
-              onClick={handleCancelRoom}
-              className="header-button"
-              style={{ 
-                background: 'rgba(239, 68, 68, 0.2)', 
-                borderColor: 'rgba(239, 68, 68, 0.3)',
-                color: '#ef4444'
-              }}
-            >
-              Cancel Room
-            </button>
-          )}
-          
           <button 
             className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
             onClick={resignGame}
@@ -762,10 +672,10 @@ export default function GameScreen({ currentUser }) {
         )}
       </div>
 
-      {/* Room Modal */}
-      <RoomModal
-        isVisible={showRoomModal}
-        onClose={() => setShowRoomModal(false)}
+      {/* Match Modal */}
+      <MatchModal
+        isVisible={showMatchModal}
+        onClose={() => setShowMatchModal(false)}
         currentUser={currentUser}
       />
     </div>

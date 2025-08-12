@@ -1,4 +1,4 @@
-// server.js - Simplified with direct username matching
+// server.js - Complete with simplified matching system
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -72,7 +72,7 @@ async function initializeDatabase() {
 const gameRooms = new Map();
 const connectedUsers = new Map(); // socketId -> user data
 const userSockets = new Map(); // username -> socketId
-const gameRequests = new Map(); // "user1:user2" -> request data
+const matchingCodes = new Map(); // code -> [user1, user2, ...]
 
 // Helper functions
 function getUserBySocket(socketId) {
@@ -108,6 +108,57 @@ function createGameRoom(player1, player2) {
   
   gameRooms.set(roomId, gameRoom);
   return gameRoom;
+}
+
+// Helper function to start game between two users
+function startGameBetweenUsers(user1, user2) {
+  // Create game room
+  const gameRoom = createGameRoom(user1, user2);
+  
+  // Join socket rooms
+  const socket1 = io.sockets.sockets.get(user1.socketId);
+  const socket2 = io.sockets.sockets.get(user2.socketId);
+  
+  if (socket1 && socket2) {
+    socket1.join(gameRoom.id);
+    socket2.join(gameRoom.id);
+    
+    // Randomly assign colors
+    const user1Color = Math.random() < 0.5 ? 'white' : 'black';
+    const user2Color = user1Color === 'white' ? 'black' : 'white';
+    
+    // Update game room with colors
+    gameRoom.players.white = user1Color === 'white' ? user1 : user2;
+    gameRoom.players.black = user1Color === 'black' ? user1 : user2;
+    
+    // Notify both players
+    socket1.emit('match-found', {
+      roomId: gameRoom.id,
+      color: user1Color,
+      opponent: user2,
+      gameState: {
+        fen: gameRoom.chess.fen(),
+        whiteTime: gameRoom.whiteTime,
+        blackTime: gameRoom.blackTime,
+        currentTurn: gameRoom.currentTurn
+      }
+    });
+    
+    socket2.emit('match-found', {
+      roomId: gameRoom.id,
+      color: user2Color,
+      opponent: user1,
+      gameState: {
+        fen: gameRoom.chess.fen(),
+        whiteTime: gameRoom.whiteTime,
+        blackTime: gameRoom.blackTime,
+        currentTurn: gameRoom.currentTurn
+      }
+    });
+    
+    console.log(`🎮 Game started: ${user1.username} (${user1Color}) vs ${user2.username} (${user2Color})`);
+    startGameTimer(gameRoom.id);
+  }
 }
 
 // Socket connection handling
@@ -162,135 +213,74 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Direct game invitation (simplified)
-  socket.on('invite-user-to-game', (data) => {
+  // Simplified matching system - enter a code to match
+  socket.on('enter-match-code', (data) => {
     const user = getUserBySocket(socket.id);
-    if (!user) return;
+    if (!user) {
+      socket.emit('error', { message: 'User not found' });
+      return;
+    }
 
-    const { targetUsername } = data;
+    const { code } = data;
     
-    // Validate target user
-    if (targetUsername === user.username) {
-      socket.emit('error', { message: "You can't play against yourself" });
-      return;
-    }
-
-    if (!isUserOnline(targetUsername)) {
-      socket.emit('error', { message: 'User is not online' });
-      return;
-    }
-
-    const targetSocket = getUserSocket(targetUsername);
-    const targetUser = getUserBySocket(targetSocket);
+    console.log(`🔑 User ${user.username} entering code: ${code}`);
     
-    if (!targetUser) {
-      socket.emit('error', { message: 'Target user not found' });
+    // Validate code
+    if (!code || code.length < 3 || code.length > 20) {
+      socket.emit('error', { message: 'Code must be 3-20 characters long' });
       return;
     }
 
-    // Send invitation to target user
-    io.to(targetSocket).emit('game-invitation-received', {
-      from: user.username,
-      fromDisplayName: user.displayName,
-      inviterSocket: socket.id
-    });
-
-    socket.emit('invitation-sent', { 
-      to: targetUsername,
-      message: `Invitation sent to ${targetUsername}`
-    });
-
-    console.log(`🎮 Direct invitation: ${user.username} -> ${targetUsername}`);
+    // Get or create code entry
+    if (!matchingCodes.has(code)) {
+      matchingCodes.set(code, []);
+    }
+    
+    const waitingUsers = matchingCodes.get(code);
+    
+    // Check if user already in this code
+    if (waitingUsers.some(u => u.username === user.username)) {
+      socket.emit('code-entered', { 
+        code: code,
+        message: `You're already waiting for someone to enter code "${code}"`,
+        waiting: true
+      });
+      return;
+    }
+    
+    // Add user to waiting list
+    waitingUsers.push(user);
+    
+    if (waitingUsers.length === 1) {
+      // First person - waiting for match
+      socket.emit('code-entered', { 
+        code: code,
+        message: `Waiting for someone to enter code "${code}"`,
+        waiting: true
+      });
+      console.log(`⏳ ${user.username} waiting for match with code: ${code}`);
+      
+    } else if (waitingUsers.length >= 2) {
+      // Match found! Start game between first two users
+      const player1 = waitingUsers[0];
+      const player2 = waitingUsers[1];
+      
+      console.log(`🎮 MATCH FOUND! ${player1.username} vs ${player2.username} (code: ${code})`);
+      
+      // Start the game
+      startGameBetweenUsers(player1, player2);
+      
+      // Clean up - remove these two users from the code
+      waitingUsers.splice(0, 2);
+      
+      // If no one else waiting, remove the code entirely
+      if (waitingUsers.length === 0) {
+        matchingCodes.delete(code);
+      }
+    }
   });
 
-  // Accept game invitation
-  socket.on('accept-game-invitation', (data) => {
-    const user = getUserBySocket(socket.id);
-    if (!user) return;
-
-    const { fromUsername, inviterSocket } = data;
-    
-    // Get inviter user
-    const inviterUser = getUserBySocket(inviterSocket);
-    if (!inviterUser) {
-      socket.emit('error', { message: 'Inviting player is no longer online' });
-      return;
-    }
-
-    console.log(`🎮 Starting game: ${inviterUser.username} vs ${user.username}`);
-    startGameBetweenUsers(inviterUser, user);
-  });
-
-  // Decline game invitation
-  socket.on('decline-game-invitation', (data) => {
-    const user = getUserBySocket(socket.id);
-    if (!user) return;
-
-    const { fromUsername, inviterSocket } = data;
-    
-    // Notify inviter
-    if (inviterSocket) {
-      io.to(inviterSocket).emit('invitation-declined', {
-        by: user.username,
-        message: `${user.username} declined your invitation`
-      });
-    }
-
-    console.log(`❌ Invitation declined: ${fromUsername} -> ${user.username}`);
-  });
-
-  // Helper function to start game between two users
-  function startGameBetweenUsers(user1, user2) {
-    // Create game room
-    const gameRoom = createGameRoom(user1, user2);
-    
-    // Join socket rooms
-    const socket1 = io.sockets.sockets.get(user1.socketId);
-    const socket2 = io.sockets.sockets.get(user2.socketId);
-    
-    if (socket1 && socket2) {
-      socket1.join(gameRoom.id);
-      socket2.join(gameRoom.id);
-      
-      // Randomly assign colors
-      const user1Color = Math.random() < 0.5 ? 'white' : 'black';
-      const user2Color = user1Color === 'white' ? 'black' : 'white';
-      
-      // Update game room with colors
-      gameRoom.players.white = user1Color === 'white' ? user1 : user2;
-      gameRoom.players.black = user1Color === 'black' ? user1 : user2;
-      
-      // Notify both players
-      socket1.emit('match-found', {
-        roomId: gameRoom.id,
-        color: user1Color,
-        opponent: user2,
-        gameState: {
-          fen: gameRoom.chess.fen(),
-          whiteTime: gameRoom.whiteTime,
-          blackTime: gameRoom.blackTime,
-          currentTurn: gameRoom.currentTurn
-        }
-      });
-      
-      socket2.emit('match-found', {
-        roomId: gameRoom.id,
-        color: user2Color,
-        opponent: user1,
-        gameState: {
-          fen: gameRoom.chess.fen(),
-          whiteTime: gameRoom.whiteTime,
-          blackTime: gameRoom.blackTime,
-          currentTurn: gameRoom.currentTurn
-        }
-      });
-      
-      console.log(`🎮 Game started: ${user1.username} (${user1Color}) vs ${user2.username} (${user2Color})`);
-      startGameTimer(gameRoom.id);
-    }
-  }
-
-  // Get online users
+  // Get online users (keeping for debug)
   socket.on('get-online-users', () => {
     const user = getUserBySocket(socket.id);
     if (!user) {
@@ -421,10 +411,17 @@ io.on('connection', (socket) => {
       userSockets.delete(user.username);
       connectedUsers.delete(socket.id);
       
-      // Clean up game requests
-      for (const [key, request] of gameRequests.entries()) {
-        if (request.requestedBy === user.username || request.targetUser === user.username) {
-          gameRequests.delete(key);
+      // Clean up matching codes
+      for (const [code, users] of matchingCodes.entries()) {
+        const userIndex = users.findIndex(u => u.username === user.username);
+        if (userIndex !== -1) {
+          users.splice(userIndex, 1);
+          console.log(`🧹 Removed ${user.username} from code: ${code}`);
+          
+          // If no users left, delete the code
+          if (users.length === 0) {
+            matchingCodes.delete(code);
+          }
         }
       }
       
@@ -436,7 +433,7 @@ io.on('connection', (socket) => {
     socket.emit('stats', {
       activeGames: gameRooms.size,
       connectedUsers: connectedUsers.size,
-      gameRequests: gameRequests.size
+      matchingCodes: matchingCodes.size
     });
   });
 });
@@ -528,9 +525,9 @@ app.get('/health', async (req, res) => {
     database: dbStatus,
     activeGames: gameRooms.size,
     connectedUsers: connectedUsers.size,
-    gameRequests: gameRequests.size,
+    matchingCodes: matchingCodes.size,
     totalUsers: dbUsers,
-    onlineUsers: onlineUsers, // Add this for debugging
+    onlineUsers: onlineUsers,
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development'
   });
@@ -573,7 +570,7 @@ async function startServer() {
     console.log(`🚀 ChessChat backend running on port ${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
     console.log(`💾 Database: ${db ? 'PostgreSQL connected' : 'Memory-only mode'}`);
-    console.log(`⚡ Game engine: Direct username matching`);
+    console.log(`⚡ Game engine: Code matching system`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }

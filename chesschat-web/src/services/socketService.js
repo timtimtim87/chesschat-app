@@ -1,4 +1,4 @@
-// src/services/socketService.js - Clean rewrite for production
+// src/services/socketService.js - Simplified with code matching
 import io from 'socket.io-client';
 
 class SocketService {
@@ -82,20 +82,10 @@ class SocketService {
       this.notifyHandlers('registration-error', data);
     });
 
-    // Game invitation events
-    this.socket.on('game-invitation-received', (data) => {
-      console.log('🎮 Game invitation received:', data);
-      this.notifyHandlers('game-invitation-received', data);
-    });
-
-    this.socket.on('invitation-sent', (data) => {
-      console.log('📤 Invitation sent:', data);
-      this.notifyHandlers('invitation-sent', data);
-    });
-
-    this.socket.on('invitation-declined', (data) => {
-      console.log('❌ Invitation declined:', data);
-      this.notifyHandlers('invitation-declined', data);
+    // Code matching events
+    this.socket.on('code-entered', (data) => {
+      console.log('🔑 Code entered response:', data);
+      this.notifyHandlers('code-entered', data);
     });
 
     // Online users
@@ -179,22 +169,12 @@ class SocketService {
     return this.currentUser;
   }
 
-  // Game invitation methods
-  inviteUserToGame(targetUsername) {
+  // Simplified matching system - just enter a code
+  enterMatchCode(code) {
     if (this.socket && this.isConnected) {
-      this.socket.emit('invite-user-to-game', { targetUsername });
-    }
-  }
-
-  acceptGameInvitation(data) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('accept-game-invitation', data);
-    }
-  }
-
-  declineGameInvitation(data) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('decline-game-invitation', data);
+      this.socket.emit('enter-match-code', { code });
+    } else {
+      console.error('❌ Socket not connected - cannot enter match code');
     }
   }
 
