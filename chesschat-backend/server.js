@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? ['https://your-domain.com'] 
+      ? ['https://chesschat-web-timantibes-1614-tims-projects-347b2ae0.vercel.app'] 
       : ['http://localhost:3000'],
     methods: ["GET", "POST"]
   }
