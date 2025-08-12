@@ -1,4 +1,4 @@
-// chesschat-backend/videoService.js - Daily.co room management
+// chesschat-backend/videoService.js - Restored working version with just audio fixes
 require('dotenv').config();
 
 class VideoService {
@@ -9,6 +9,8 @@ class VideoService {
     
     if (!this.apiKey) {
       console.warn('⚠️  DAILY_API_KEY not configured - video features will be disabled');
+    } else {
+      console.log('✅ Daily.co API key configured');
     }
   }
 
@@ -42,6 +44,8 @@ class VideoService {
     };
 
     try {
+      console.log('🎥 Creating Daily.co room:', roomName);
+      
       const response = await fetch(`${this.apiUrl}/rooms`, {
         method: 'POST',
         headers: {
@@ -52,7 +56,7 @@ class VideoService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(`Daily API error: ${response.status} - ${errorData.error || response.statusText}`);
       }
 
