@@ -74,7 +74,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, callObject }
   const toggleAudio = async () => {
     if (callObject && !isOpponent) {
       try {
-        const newState = await callObject.setLocalAudio(!isAudioEnabled);
+        await callObject.setLocalAudio(!isAudioEnabled);
         setIsAudioEnabled(!isAudioEnabled);
       } catch (error) {
         console.error('Error toggling audio:', error);

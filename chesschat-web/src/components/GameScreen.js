@@ -198,8 +198,6 @@ export default function GameScreen({ currentUser }) {
   const [pendingRequests, setPendingRequests] = useState([]);
   const [gameInvitation, setGameInvitation] = useState(null);
 
-  const timerRef = useRef(null);
-
   // Initialize audio on first user interaction
   useEffect(() => {
     const initializeAudio = () => {
