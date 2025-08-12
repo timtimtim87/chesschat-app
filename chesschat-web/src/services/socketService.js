@@ -1,4 +1,4 @@
-// src/services/socketService.js - Updated for Railway backend
+// src/services/socketService.js - Clean rewrite for production
 import io from 'socket.io-client';
 
 class SocketService {
@@ -82,62 +82,32 @@ class SocketService {
       this.notifyHandlers('registration-error', data);
     });
 
-    // Friend system events
-    this.socket.on('friend-request-received', (data) => {
-      console.log('👥 Friend request received:', data);
-      this.notifyHandlers('friend-request-received', data);
-    });
-
-    this.socket.on('friend-request-sent', (data) => {
-      console.log('📤 Friend request sent:', data);
-      this.notifyHandlers('friend-request-sent', data);
-    });
-
-    this.socket.on('friend-added', (data) => {
-      console.log('✅ Friend added:', data);
-      this.notifyHandlers('friend-added', data);
-    });
-
-    this.socket.on('friend-status-update', (data) => {
-      console.log('🔄 Friend status update:', data);
-      this.notifyHandlers('friend-status-update', data);
-    });
-
-    this.socket.on('friends-list', (data) => {
-      console.log('📋 Friends list:', data);
-      this.notifyHandlers('friends-list', data);
-    });
-
     // Game invitation events
     this.socket.on('game-invitation-received', (data) => {
       console.log('🎮 Game invitation received:', data);
       this.notifyHandlers('game-invitation-received', data);
     });
 
-    this.socket.on('game-invitation-sent', (data) => {
-      console.log('📤 Game invitation sent:', data);
-      this.notifyHandlers('game-invitation-sent', data);
+    this.socket.on('invitation-sent', (data) => {
+      console.log('📤 Invitation sent:', data);
+      this.notifyHandlers('invitation-sent', data);
     });
 
-    this.socket.on('game-invitation-declined', (data) => {
-      console.log('❌ Game invitation declined:', data);
-      this.notifyHandlers('game-invitation-declined', data);
+    this.socket.on('invitation-declined', (data) => {
+      console.log('❌ Invitation declined:', data);
+      this.notifyHandlers('invitation-declined', data);
+    });
+
+    // Online users
+    this.socket.on('online-users-list', (data) => {
+      console.log('👥 Online users:', data);
+      this.notifyHandlers('online-users-list', data);
     });
 
     // Game events
-    this.socket.on('matchmaking-joined', (data) => {
-      console.log('🎯 Joined matchmaking:', data);
-      this.notifyHandlers('matchmaking-joined', data);
-    });
-
     this.socket.on('match-found', (data) => {
       console.log('🎮 Match found:', data);
       this.notifyHandlers('match-found', data);
-    });
-
-    this.socket.on('waiting-for-opponent', (data) => {
-      console.log('⏳ Waiting for opponent:', data);
-      this.notifyHandlers('waiting-for-opponent', data);
     });
 
     this.socket.on('move-made', (data) => {
@@ -209,51 +179,7 @@ class SocketService {
     return this.currentUser;
   }
 
-  // Friend system methods
-  sendFriendRequest(targetUsername) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('send-friend-request', { targetUsername });
-    }
-  }
-
-  acceptFriendRequest(fromUsername) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('accept-friend-request', { fromUsername });
-    }
-  }
-
-  declineFriendRequest(fromUsername) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('decline-friend-request', { fromUsername });
-    }
-  }
-
-  getFriends() {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('get-friends');
-    }
-  }
-
   // Game invitation methods
-  inviteFriend(friendUsername, gameType = '10min') {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('invite-friend', { friendUsername, gameType });
-    }
-  }
-
-  acceptGameInvitation(inviteId) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('accept-game-invitation', { inviteId });
-    }
-  }
-
-  declineGameInvitation(inviteId) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('decline-game-invitation', { inviteId });
-    }
-  }
-
-  // Simple game invitation methods
   inviteUserToGame(targetUsername) {
     if (this.socket && this.isConnected) {
       this.socket.emit('invite-user-to-game', { targetUsername });
@@ -275,15 +201,6 @@ class SocketService {
   getOnlineUsers() {
     if (this.socket && this.isConnected) {
       this.socket.emit('get-online-users');
-    }
-  }
-
-  // Matchmaking methods (keeping for practice mode)
-  joinMatchmaking(playerData = {}) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('join-matchmaking', playerData);
-    } else {
-      console.error('❌ Socket not connected');
     }
   }
 
