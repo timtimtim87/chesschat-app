@@ -1,10 +1,11 @@
-// server.js - Complete with simplified matching system
+// server.js - Complete with video integration
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const { Chess } = require('chess.js');
 const Database = require('./database');
+const VideoService = require('./videoService');
 require('dotenv').config();
 
 const app = express();
@@ -12,6 +13,9 @@ const server = http.createServer(app);
 
 // Get port from environment or default to 3001
 const PORT = process.env.PORT || 3001;
+
+// Initialize video service
+const videoService = new VideoService();
 
 // CORS configuration for Railway deployment
 const corsOrigins = [
@@ -46,6 +50,7 @@ app.get('/', (req, res) => {
     message: 'ChessChat Backend Server',
     status: 'running',
     version: '1.0.0',
+    video: videoService.getStatus(),
     timestamp: new Date().toISOString()
   });
 });
@@ -103,7 +108,8 @@ function createGameRoom(player1, player2) {
     gameStatus: 'playing',
     createdAt: new Date(),
     lastMove: null,
-    moveCount: 0
+    moveCount: 0,
+    videoRoom: null // Will be populated with Daily.co room info
   };
   
   gameRooms.set(roomId, gameRoom);
@@ -111,7 +117,7 @@ function createGameRoom(player1, player2) {
 }
 
 // Helper function to start game between two users
-function startGameBetweenUsers(user1, user2) {
+async function startGameBetweenUsers(user1, user2) {
   // Create game room
   const gameRoom = createGameRoom(user1, user2);
   
@@ -131,32 +137,50 @@ function startGameBetweenUsers(user1, user2) {
     gameRoom.players.white = user1Color === 'white' ? user1 : user2;
     gameRoom.players.black = user1Color === 'black' ? user1 : user2;
     
-    // Notify both players
-    socket1.emit('match-found', {
+    // Create video room
+    try {
+      const videoRoom = await videoService.createGameRoom(
+        gameRoom.id, 
+        [user1.username, user2.username]
+      );
+      
+      if (videoRoom) {
+        gameRoom.videoRoom = videoRoom;
+        console.log(`🎥 Video room created for game ${gameRoom.id}: ${videoRoom.url}`);
+      } else {
+        console.log(`⚠️  Video room creation failed for game ${gameRoom.id}, continuing without video`);
+      }
+    } catch (error) {
+      console.error(`❌ Video room creation error for game ${gameRoom.id}:`, error);
+    }
+    
+    // Prepare game data for both players
+    const gameStateData = {
       roomId: gameRoom.id,
-      color: user1Color,
-      opponent: user2,
       gameState: {
         fen: gameRoom.chess.fen(),
         whiteTime: gameRoom.whiteTime,
         blackTime: gameRoom.blackTime,
         currentTurn: gameRoom.currentTurn
-      }
+      },
+      videoRoom: gameRoom.videoRoom // Include video room info
+    };
+    
+    // Notify both players
+    socket1.emit('match-found', {
+      ...gameStateData,
+      color: user1Color,
+      opponent: user2
     });
     
     socket2.emit('match-found', {
-      roomId: gameRoom.id,
+      ...gameStateData,
       color: user2Color,
-      opponent: user1,
-      gameState: {
-        fen: gameRoom.chess.fen(),
-        whiteTime: gameRoom.whiteTime,
-        blackTime: gameRoom.blackTime,
-        currentTurn: gameRoom.currentTurn
-      }
+      opponent: user1
     });
     
     console.log(`🎮 Game started: ${user1.username} (${user1Color}) vs ${user2.username} (${user2Color})`);
+    console.log(`🎥 Video room: ${gameRoom.videoRoom ? gameRoom.videoRoom.url : 'disabled'}`);
     startGameTimer(gameRoom.id);
   }
 }
@@ -267,7 +291,7 @@ io.on('connection', (socket) => {
       
       console.log(`🎮 MATCH FOUND! ${player1.username} vs ${player2.username} (code: ${code})`);
       
-      // Start the game
+      // Start the game (now includes video room creation)
       startGameBetweenUsers(player1, player2);
       
       // Clean up - remove these two users from the code
@@ -361,6 +385,13 @@ io.on('connection', (socket) => {
         if (gameEnded) {
           console.log(`🏁 Game ${roomId} ended: ${reason} - Winner: ${winner || 'Draw'}`);
           stopGameTimer(roomId);
+          
+          // Clean up video room
+          if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
+            setTimeout(() => {
+              videoService.deleteGameRoom(gameRoom.videoRoom.name);
+            }, 30000); // 30 second delay to allow players to see final position
+          }
         }
         
       } else {
@@ -398,6 +429,13 @@ io.on('connection', (socket) => {
     
     stopGameTimer(roomId);
     console.log(`🏳️ ${playerColor} resigned in game ${roomId}`);
+    
+    // Clean up video room
+    if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
+      setTimeout(() => {
+        videoService.deleteGameRoom(gameRoom.videoRoom.name);
+      }, 10000); // 10 second delay
+    }
   });
 
   // Handle disconnection
@@ -433,7 +471,8 @@ io.on('connection', (socket) => {
     socket.emit('stats', {
       activeGames: gameRooms.size,
       connectedUsers: connectedUsers.size,
-      matchingCodes: matchingCodes.size
+      matchingCodes: matchingCodes.size,
+      videoService: videoService.getStatus()
     });
   });
 });
@@ -529,7 +568,8 @@ app.get('/health', async (req, res) => {
     totalUsers: dbUsers,
     onlineUsers: onlineUsers,
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    video: videoService.getStatus()
   });
 });
 
@@ -542,6 +582,16 @@ app.get('/online-users', (req, res) => {
     socketMappings: Object.fromEntries(userSockets)
   });
 });
+
+// Video service endpoints for debugging
+app.get('/video/status', (req, res) => {
+  res.json(videoService.getStatus());
+});
+
+// Cleanup expired video rooms every hour
+setInterval(() => {
+  videoService.cleanupExpiredRooms();
+}, 60 * 60 * 1000);
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
@@ -570,6 +620,7 @@ async function startServer() {
     console.log(`🚀 ChessChat backend running on port ${PORT}`);
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
     console.log(`💾 Database: ${db ? 'PostgreSQL connected' : 'Memory-only mode'}`);
+    console.log(`🎥 Video service: ${videoService.isConfigured() ? 'Daily.co configured' : 'Video disabled'}`);
     console.log(`⚡ Game engine: Code matching system`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   });

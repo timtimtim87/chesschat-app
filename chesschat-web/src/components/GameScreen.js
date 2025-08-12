@@ -1,9 +1,10 @@
-// src/components/GameScreen.js - Complete simplified with code matching system
+// src/components/GameScreen.js - Complete with video integration
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
 import VideoCall from './VideoCall';
 import socketService from '../services/socketService';
+import dailyService from '../services/dailyService';
 import { Chess } from 'chess.js';
 
 // Audio context for sounds
@@ -301,6 +302,9 @@ export default function GameScreen({ currentUser }) {
   const [notification, setNotification] = useState(null);
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
   const [showMatchModal, setShowMatchModal] = useState(false);
+  
+  // Video state
+  const [videoRoomUrl, setVideoRoomUrl] = useState(null);
 
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -329,6 +333,15 @@ export default function GameScreen({ currentUser }) {
       }
     }
   }, [board, playerColor]);
+
+  // Cleanup video call when component unmounts
+  useEffect(() => {
+    return () => {
+      if (videoRoomUrl) {
+        dailyService.leaveCall();
+      }
+    };
+  }, []);
 
   // Notification helpers
   const showNotification = (message, type = 'info') => {
@@ -369,6 +382,15 @@ export default function GameScreen({ currentUser }) {
       setCurrentTurn(data.gameState.currentTurn);
       setWhiteTime(data.gameState.whiteTime);
       setBlackTime(data.gameState.blackTime);
+      
+      // Store video room info
+      if (data.videoRoom) {
+        setVideoRoomUrl(data.videoRoom.url);
+        console.log('🎥 Video room URL received:', data.videoRoom.url);
+      } else {
+        console.log('⚠️  No video room provided');
+        setVideoRoomUrl(null);
+      }
       
       showNotification(`Game started! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
       audioManager.playMoveSound();
@@ -426,6 +448,13 @@ export default function GameScreen({ currentUser }) {
         message += `${data.winner} wins! ${data.disconnectedPlayer} disconnected.`;
       }
       showNotification(message, 'warning');
+      
+      // Leave video call after game ends
+      setTimeout(() => {
+        if (videoRoomUrl) {
+          dailyService.leaveCall();
+        }
+      }, 5000); // 5 second delay to see final position
     };
 
     const handleTimeUpdate = (data) => {
@@ -457,7 +486,7 @@ export default function GameScreen({ currentUser }) {
       socketService.off('time-update', handleTimeUpdate);
       socketService.off('error', handleError);
     };
-  }, []);
+  }, [videoRoomUrl]);
 
   // Chess move handling
   const handleSquarePress = (row, col) => {
@@ -549,6 +578,7 @@ export default function GameScreen({ currentUser }) {
     setGameWinner(null);
     setRoomId(null);
     setOpponent(null);
+    setVideoRoomUrl(null);
     showNotification('Practice game started', 'info');
   };
 
@@ -574,7 +604,13 @@ export default function GameScreen({ currentUser }) {
     setDisplayBoard([]);
     setCurrentTurn('white');
     setSelectedSquare(null);
+    setVideoRoomUrl(null);
     hideNotification();
+    
+    // Leave video call
+    if (videoRoomUrl) {
+      dailyService.leaveCall();
+    }
   };
 
   // Get display names for players
@@ -637,6 +673,8 @@ export default function GameScreen({ currentUser }) {
             isOpponent={true}
             timer={<Timer time={blackTime} isActive={currentTurn === 'black' && gameStatus === 'playing'} />}
             playerLabel={getPlayerName('black')}
+            videoRoomUrl={videoRoomUrl}
+            userName={currentUser?.username}
           />
         </div>
 
@@ -654,6 +692,8 @@ export default function GameScreen({ currentUser }) {
             isOpponent={false}
             timer={<Timer time={whiteTime} isActive={currentTurn === 'white' && gameStatus === 'playing'} />}
             playerLabel={getPlayerName('white')}
+            videoRoomUrl={videoRoomUrl}
+            userName={currentUser?.username}
           />
         </div>
       </div>

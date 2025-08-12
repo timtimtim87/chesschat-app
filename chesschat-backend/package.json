@@ -10,16 +10,23 @@
     "railway:build": "echo 'Building ChessChat Backend'",
     "railway:start": "node server.js"
   },
-  "keywords": ["chess", "multiplayer", "socket.io", "real-time", "postgresql"],
+  "keywords": [
+    "chess",
+    "multiplayer",
+    "socket.io",
+    "real-time",
+    "postgresql"
+  ],
   "author": "ChessChat Team",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.5",
-    "cors": "^2.8.5",
     "chess.js": "^1.0.0-beta.6",
+    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "pg": "^8.11.3"
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.11.3",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
