@@ -1,4 +1,4 @@
-// src/components/GameScreen.js - Simplified with username matching
+// src/components/GameScreen.js - Room-only version with friends system removed
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
@@ -119,27 +119,47 @@ function GameStatusIndicator({ status }) {
   );
 }
 
-// Online Users Component - Click to Invite
-function OnlineUsersModal({ isVisible, onClose, onInviteUser, currentUser }) {
-  const [onlineUsers, setOnlineUsers] = useState([]);
+// Enhanced Room Management Component
+function RoomModal({ isVisible, onClose, currentUser }) {
+  const [activeTab, setActiveTab] = useState('create');
+  const [roomCode, setRoomCode] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
 
+  const handleCreateRoom = (e) => {
+    e.preventDefault();
+    if (roomCode.trim().length >= 3) {
+      setIsCreating(true);
+      socketService.createGameRoom(roomCode.trim());
+      setTimeout(() => setIsCreating(false), 2000);
+    }
+  };
+
+  const handleJoinRoom = (e) => {
+    e.preventDefault();
+    if (roomCode.trim().length >= 3) {
+      setIsJoining(true);
+      socketService.joinGameRoom(roomCode.trim());
+      setTimeout(() => setIsJoining(false), 2000);
+    }
+  };
+
+  const generateRandomCode = () => {
+    const adjectives = ['Quick', 'Smart', 'Cool', 'Fast', 'Epic', 'Super', 'Mega', 'Ultra'];
+    const nouns = ['Game', 'Match', 'Battle', 'Duel', 'Fight', 'Chess', 'Play', 'Room'];
+    const numbers = Math.floor(Math.random() * 1000);
+    
+    const randomCode = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${numbers}`;
+    setRoomCode(randomCode);
+  };
+
+  // Reset form when modal opens/closes
   useEffect(() => {
     if (isVisible) {
-      socketService.getOnlineUsers();
+      setRoomCode('');
+      setActiveTab('create');
     }
   }, [isVisible]);
-
-  useEffect(() => {
-    const handleOnlineUsers = (data) => {
-      setOnlineUsers(data.users);
-    };
-
-    socketService.on('online-users-list', handleOnlineUsers);
-
-    return () => {
-      socketService.off('online-users-list', handleOnlineUsers);
-    };
-  }, []);
 
   if (!isVisible) return null;
 
@@ -147,72 +167,179 @@ function OnlineUsersModal({ isVisible, onClose, onInviteUser, currentUser }) {
     <div className="friends-overlay">
       <div className="friends-panel">
         <div className="friends-header">
-          <h2 className="friends-title">Online Players</h2>
+          <h2 className="friends-title">Play Chess</h2>
           <button onClick={onClose} className="close-button">×</button>
         </div>
 
         <div className="friends-content">
-          <div className="friends-list-section">
-            <h3 className="section-title">
-              Click on a player to invite them to a game
+          {/* Welcome message */}
+          <div style={{ 
+            background: 'rgba(139, 92, 246, 0.1)', 
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            borderRadius: '8px',
+            padding: '16px',
+            marginBottom: '24px',
+            textAlign: 'center'
+          }}>
+            <h3 style={{ color: '#a78bfa', margin: '0 0 8px 0', fontSize: '16px' }}>
+              Welcome, {currentUser?.username}!
             </h3>
-            
-            {onlineUsers.length === 0 ? (
-              <div className="empty-friends">
-                <p className="empty-text">No other players online</p>
-                <p className="empty-subtext">Share the app with friends to play together!</p>
-              </div>
-            ) : (
-              <div className="friends-list">
-                {onlineUsers.map((user) => (
-                  <div key={user} className="friend-item">
-                    <div className="friend-info">
-                      <div className="friend-name">
-                        <span className="friend-username">{user}</span>
-                        <span className="friend-status online">🟢 Online</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => onInviteUser(user)}
-                      className="invite-button"
-                    >
-                      Invite to Game
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
+              Create a room and share the code with a friend, or join an existing room.
+            </p>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// Game Invitation Modal - Accept/Decline
-function GameInvitationModal({ invitation, onAccept, onDecline }) {
-  if (!invitation) return null;
+          {/* Tab Buttons */}
+          <div style={{ 
+            display: 'flex', 
+            marginBottom: '20px', 
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '8px 8px 0 0',
+            overflow: 'hidden'
+          }}>
+            <button
+              style={{
+                flex: 1,
+                padding: '12px 16px',
+                background: activeTab === 'create' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: activeTab === 'create' ? '600' : '400',
+                transition: 'all 0.2s'
+              }}
+              onClick={() => {
+                setActiveTab('create');
+                setRoomCode('');
+              }}
+            >
+              🏠 Create Room
+            </button>
+            <button
+              style={{
+                flex: 1,
+                padding: '12px 16px',
+                background: activeTab === 'join' ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: activeTab === 'join' ? '600' : '400',
+                transition: 'all 0.2s'
+              }}
+              onClick={() => {
+                setActiveTab('join');
+                setRoomCode('');
+              }}
+            >
+              🚪 Join Room
+            </button>
+          </div>
 
-  return (
-    <div className="friends-overlay">
-      <div className="invitation-modal">
-        <h3 className="invitation-title">Game Invitation</h3>
-        <p className="invitation-text">
-          <strong>{invitation.from}</strong> wants to play chess with you!
-        </p>
-        <div className="invitation-actions">
-          <button 
-            onClick={() => onAccept(invitation)}
-            className="accept-button"
-          >
-            Accept
-          </button>
-          <button 
-            onClick={() => onDecline(invitation)}
-            className="decline-button"
-          >
-            Decline
-          </button>
+          {/* Create Room Tab */}
+          {activeTab === 'create' && (
+            <div className="add-friend-section">
+              <h3 className="section-title">Create a New Room</h3>
+              <p style={{ color: '#9ca3af', fontSize: '14px', marginBottom: '16px' }}>
+                Choose a room name and share it with your friend
+              </p>
+              
+              <form onSubmit={handleCreateRoom} className="add-friend-form">
+                <input
+                  type="text"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value)}
+                  placeholder="Enter room name (e.g., MyRoom123)"
+                  className="friend-input"
+                  minLength={3}
+                  maxLength={20}
+                  disabled={isCreating}
+                  style={{ fontSize: '16px' }}
+                />
+                <button
+                  type="submit"
+                  className="add-friend-button"
+                  disabled={isCreating || roomCode.trim().length < 3}
+                  style={{ minWidth: '120px' }}
+                >
+                  {isCreating ? 'Creating...' : '🏠 Create'}
+                </button>
+              </form>
+
+              <div style={{ textAlign: 'center', margin: '16px 0' }}>
+                <button
+                  onClick={generateRandomCode}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    color: 'white',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  🎲 Generate Random Name
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Join Room Tab */}
+          {activeTab === 'join' && (
+            <div className="add-friend-section">
+              <h3 className="section-title">Join an Existing Room</h3>
+              <p style={{ color: '#9ca3af', fontSize: '14px', marginBottom: '16px' }}>
+                Enter the room name your friend shared with you
+              </p>
+              
+              <form onSubmit={handleJoinRoom} className="add-friend-form">
+                <input
+                  type="text"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value)}
+                  placeholder="Enter room name"
+                  className="friend-input"
+                  minLength={3}
+                  maxLength={20}
+                  disabled={isJoining}
+                  style={{ fontSize: '16px' }}
+                />
+                <button
+                  type="submit"
+                  className="add-friend-button"
+                  disabled={isJoining || roomCode.trim().length < 3}
+                  style={{ 
+                    minWidth: '120px',
+                    background: '#10b981' 
+                  }}
+                >
+                  {isJoining ? 'Joining...' : '🚪 Join'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div style={{ 
+            background: 'rgba(59, 130, 246, 0.1)', 
+            border: '1px solid rgba(59, 130, 246, 0.2)',
+            borderRadius: '8px',
+            padding: '16px',
+            marginTop: '20px'
+          }}>
+            <h4 style={{ color: '#60a5fa', margin: '0 0 8px 0', fontSize: '14px' }}>
+              How it works:
+            </h4>
+            <ul style={{ color: '#9ca3af', fontSize: '13px', margin: 0, paddingLeft: '16px' }}>
+              <li>Create a room with any name you want</li>
+              <li>Share the room name with your friend</li>
+              <li>They join using the same room name</li>
+              <li>Game starts automatically when both players connect!</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -238,8 +365,8 @@ export default function GameScreen({ currentUser }) {
   // UI state
   const [notification, setNotification] = useState(null);
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
-  const [showOnlineUsers, setShowOnlineUsers] = useState(false);
-  const [gameInvitation, setGameInvitation] = useState(null);
+  const [showRoomModal, setShowRoomModal] = useState(false);
+  const [currentRoomCode, setCurrentRoomCode] = useState(null);
 
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -285,19 +412,15 @@ export default function GameScreen({ currentUser }) {
 
   // Socket event handlers
   useEffect(() => {
-    // Game invitation events
-    const handleGameInvitationReceived = (data) => {
-      setGameInvitation(data);
-      showNotification(`Game invitation from ${data.from}!`, 'info');
-    };
-
-    const handleInvitationSent = (data) => {
+    // Room management events
+    const handleRoomCreated = (data) => {
+      setCurrentRoomCode(data.roomCode);
       showNotification(data.message, 'success');
-      setShowOnlineUsers(false);
     };
 
-    const handleInvitationDeclined = (data) => {
-      showNotification(data.message, 'warning');
+    const handleRoomCancelled = (data) => {
+      setCurrentRoomCode(null);
+      showNotification(`Room ${data.roomCode} cancelled`, 'info');
     };
 
     // Game events
@@ -306,8 +429,8 @@ export default function GameScreen({ currentUser }) {
       setPlayerColor(data.color);
       setOpponent(data.opponent);
       setGameStatus('playing');
-      setShowOnlineUsers(false);
-      setGameInvitation(null);
+      setShowRoomModal(false);
+      setCurrentRoomCode(null);
       
       const chess = new Chess(data.gameState.fen);
       setGameChess(chess);
@@ -383,9 +506,8 @@ export default function GameScreen({ currentUser }) {
     };
 
     // Add event listeners
-    socketService.on('game-invitation-received', handleGameInvitationReceived);
-    socketService.on('invitation-sent', handleInvitationSent);
-    socketService.on('invitation-declined', handleInvitationDeclined);
+    socketService.on('room-created', handleRoomCreated);
+    socketService.on('room-cancelled', handleRoomCancelled);
     socketService.on('match-found', handleMatchFound);
     socketService.on('move-made', handleMoveMade);
     socketService.on('invalid-move', handleInvalidMove);
@@ -395,9 +517,8 @@ export default function GameScreen({ currentUser }) {
 
     return () => {
       // Cleanup event listeners
-      socketService.off('game-invitation-received', handleGameInvitationReceived);
-      socketService.off('invitation-sent', handleInvitationSent);
-      socketService.off('invitation-declined', handleInvitationDeclined);
+      socketService.off('room-created', handleRoomCreated);
+      socketService.off('room-cancelled', handleRoomCancelled);
       socketService.off('match-found', handleMatchFound);
       socketService.off('move-made', handleMoveMade);
       socketService.off('invalid-move', handleInvalidMove);
@@ -500,35 +621,18 @@ export default function GameScreen({ currentUser }) {
     showNotification('Practice game started', 'info');
   };
 
-  const handleInviteUser = (username) => {
-    socketService.inviteUserToGame(username);
-  };
-
-  const handleAcceptInvitation = (invitation) => {
-    socketService.acceptGameInvitation({
-      fromUsername: invitation.from,
-      inviterSocket: invitation.inviterSocket
-    });
-    setGameInvitation(null);
-  };
-
-  const handleDeclineInvitation = (invitation) => {
-    socketService.declineGameInvitation({
-      fromUsername: invitation.from,
-      inviterSocket: invitation.inviterSocket
-    });
-    setGameInvitation(null);
+  const handleCancelRoom = () => {
+    if (currentRoomCode) {
+      socketService.cancelRoom(currentRoomCode);
+      setCurrentRoomCode(null);
+    }
   };
 
   const resignGame = () => {
-    console.log('Resign clicked - roomId:', roomId, 'playerColor:', playerColor, 'gameStatus:', gameStatus);
-    
     if (window.confirm("Are you sure you want to resign?")) {
       if (roomId && playerColor) {
-        console.log('Sending resign to server');
         socketService.resign(roomId, playerColor);
       } else {
-        console.log('Local game resignation');
         setGameWinner(playerColor === 'white' ? 'black' : 'white');
         setGameStatus('ended');
         showNotification('You resigned', 'info');
@@ -577,28 +681,44 @@ export default function GameScreen({ currentUser }) {
       <div className="header">
         <button 
           className={`header-button start-match-button ${gameStatus === 'playing' ? 'disabled-button' : ''}`}
-          onClick={() => setShowOnlineUsers(true)}
+          onClick={() => setShowRoomModal(true)}
           disabled={gameStatus === 'playing'}
         >
-          Find Players
+          {currentRoomCode ? `Room: ${currentRoomCode}` : 'Create/Join Room'}
         </button>
 
         <div className="title-container">
           <div className="title">ChessChat</div>
           <div className="status">
-            {gameStatus === 'idle' && `Welcome ${currentUser?.username}!`}
+            {gameStatus === 'idle' && `Welcome ${currentUser?.username}! Create or join a room to play.`}
             {gameStatus === 'playing' && getCurrentPlayerName()}
             {gameStatus === 'ended' && `${gameWinner} wins!`}
           </div>
         </div>
 
-        <button 
-          className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
-          onClick={resignGame}
-          disabled={gameStatus !== 'playing'}
-        >
-          Resign
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {currentRoomCode && (
+            <button 
+              onClick={handleCancelRoom}
+              className="header-button"
+              style={{ 
+                background: 'rgba(239, 68, 68, 0.2)', 
+                borderColor: 'rgba(239, 68, 68, 0.3)',
+                color: '#ef4444'
+              }}
+            >
+              Cancel Room
+            </button>
+          )}
+          
+          <button 
+            className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
+            onClick={resignGame}
+            disabled={gameStatus !== 'playing'}
+          >
+            Resign
+          </button>
+        </div>
       </div>
 
       <div className="game-main">
@@ -642,19 +762,11 @@ export default function GameScreen({ currentUser }) {
         )}
       </div>
 
-      {/* Online Users Modal */}
-      <OnlineUsersModal
-        isVisible={showOnlineUsers}
-        onClose={() => setShowOnlineUsers(false)}
-        onInviteUser={handleInviteUser}
+      {/* Room Modal */}
+      <RoomModal
+        isVisible={showRoomModal}
+        onClose={() => setShowRoomModal(false)}
         currentUser={currentUser}
-      />
-
-      {/* Game Invitation Modal */}
-      <GameInvitationModal
-        invitation={gameInvitation}
-        onAccept={handleAcceptInvitation}
-        onDecline={handleDeclineInvitation}
       />
     </div>
   );
