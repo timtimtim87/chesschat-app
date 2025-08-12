@@ -119,9 +119,8 @@ function GameStatusIndicator({ status }) {
   );
 }
 
-// Username Matching Component
-function UsernameMatchingModal({ isVisible, onClose, onSubmit, currentUser }) {
-  const [targetUsername, setTargetUsername] = useState('');
+// Online Users Component - Click to Invite
+function OnlineUsersModal({ isVisible, onClose, onInviteUser, currentUser }) {
   const [onlineUsers, setOnlineUsers] = useState([]);
 
   useEffect(() => {
@@ -142,56 +141,28 @@ function UsernameMatchingModal({ isVisible, onClose, onSubmit, currentUser }) {
     };
   }, []);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (targetUsername.trim()) {
-      onSubmit(targetUsername.trim());
-      setTargetUsername('');
-    }
-  };
-
   if (!isVisible) return null;
 
   return (
     <div className="friends-overlay">
       <div className="friends-panel">
         <div className="friends-header">
-          <h2 className="friends-title">Start Game</h2>
+          <h2 className="friends-title">Online Players</h2>
           <button onClick={onClose} className="close-button">×</button>
         </div>
 
         <div className="friends-content">
-          <div className="add-friend-section">
-            <h3 className="section-title">Enter opponent's username</h3>
-            <form onSubmit={handleSubmit} className="add-friend-form">
-              <input
-                type="text"
-                value={targetUsername}
-                onChange={(e) => setTargetUsername(e.target.value)}
-                placeholder="Opponent's username"
-                className="friend-input"
-                minLength={3}
-                maxLength={20}
-                list="online-users"
-              />
-              <datalist id="online-users">
-                {onlineUsers.map(user => (
-                  <option key={user} value={user} />
-                ))}
-              </datalist>
-              <button
-                type="submit"
-                className="add-friend-button"
-                disabled={targetUsername.trim().length < 3}
-              >
-                Request Game
-              </button>
-            </form>
-          </div>
-
-          {onlineUsers.length > 0 && (
-            <div className="friends-list-section">
-              <h3 className="section-title">Online Users ({onlineUsers.length})</h3>
+          <div className="friends-list-section">
+            <h3 className="section-title">
+              Click on a player to invite them to a game
+            </h3>
+            
+            {onlineUsers.length === 0 ? (
+              <div className="empty-friends">
+                <p className="empty-text">No other players online</p>
+                <p className="empty-subtext">Share the app with friends to play together!</p>
+              </div>
+            ) : (
               <div className="friends-list">
                 {onlineUsers.map((user) => (
                   <div key={user} className="friend-item">
@@ -202,16 +173,46 @@ function UsernameMatchingModal({ isVisible, onClose, onSubmit, currentUser }) {
                       </div>
                     </div>
                     <button
-                      onClick={() => setTargetUsername(user)}
+                      onClick={() => onInviteUser(user)}
                       className="invite-button"
                     >
-                      Select
+                      Invite to Game
                     </button>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Game Invitation Modal - Accept/Decline
+function GameInvitationModal({ invitation, onAccept, onDecline }) {
+  if (!invitation) return null;
+
+  return (
+    <div className="friends-overlay">
+      <div className="invitation-modal">
+        <h3 className="invitation-title">Game Invitation</h3>
+        <p className="invitation-text">
+          <strong>{invitation.from}</strong> wants to play chess with you!
+        </p>
+        <div className="invitation-actions">
+          <button 
+            onClick={() => onAccept(invitation)}
+            className="accept-button"
+          >
+            Accept
+          </button>
+          <button 
+            onClick={() => onDecline(invitation)}
+            className="decline-button"
+          >
+            Decline
+          </button>
         </div>
       </div>
     </div>
@@ -237,7 +238,8 @@ export default function GameScreen({ currentUser }) {
   // UI state
   const [notification, setNotification] = useState(null);
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
-  const [showUsernameMatch, setShowUsernameMatch] = useState(false);
+  const [showOnlineUsers, setShowOnlineUsers] = useState(false);
+  const [gameInvitation, setGameInvitation] = useState(null);
 
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -283,13 +285,19 @@ export default function GameScreen({ currentUser }) {
 
   // Socket event handlers
   useEffect(() => {
-    // Game request events
-    const handleGameRequestReceived = (data) => {
-      showNotification(`${data.from} wants to play chess with you! Send them a request back to start the game.`, 'info');
+    // Game invitation events
+    const handleGameInvitationReceived = (data) => {
+      setGameInvitation(data);
+      showNotification(`Game invitation from ${data.from}!`, 'info');
     };
 
-    const handleGameRequestSent = (data) => {
+    const handleInvitationSent = (data) => {
       showNotification(data.message, 'success');
+      setShowOnlineUsers(false);
+    };
+
+    const handleInvitationDeclined = (data) => {
+      showNotification(data.message, 'warning');
     };
 
     // Game events
@@ -298,7 +306,8 @@ export default function GameScreen({ currentUser }) {
       setPlayerColor(data.color);
       setOpponent(data.opponent);
       setGameStatus('playing');
-      setShowUsernameMatch(false);
+      setShowOnlineUsers(false);
+      setGameInvitation(null);
       
       const chess = new Chess(data.gameState.fen);
       setGameChess(chess);
@@ -374,8 +383,9 @@ export default function GameScreen({ currentUser }) {
     };
 
     // Add event listeners
-    socketService.on('game-request-received', handleGameRequestReceived);
-    socketService.on('game-request-sent', handleGameRequestSent);
+    socketService.on('game-invitation-received', handleGameInvitationReceived);
+    socketService.on('invitation-sent', handleInvitationSent);
+    socketService.on('invitation-declined', handleInvitationDeclined);
     socketService.on('match-found', handleMatchFound);
     socketService.on('move-made', handleMoveMade);
     socketService.on('invalid-move', handleInvalidMove);
@@ -385,8 +395,9 @@ export default function GameScreen({ currentUser }) {
 
     return () => {
       // Cleanup event listeners
-      socketService.off('game-request-received', handleGameRequestReceived);
-      socketService.off('game-request-sent', handleGameRequestSent);
+      socketService.off('game-invitation-received', handleGameInvitationReceived);
+      socketService.off('invitation-sent', handleInvitationSent);
+      socketService.off('invitation-declined', handleInvitationDeclined);
       socketService.off('match-found', handleMatchFound);
       socketService.off('move-made', handleMoveMade);
       socketService.off('invalid-move', handleInvalidMove);
@@ -489,8 +500,24 @@ export default function GameScreen({ currentUser }) {
     showNotification('Practice game started', 'info');
   };
 
-  const handleUsernameSubmit = (targetUsername) => {
-    socketService.createGameRequest(targetUsername);
+  const handleInviteUser = (username) => {
+    socketService.inviteUserToGame(username);
+  };
+
+  const handleAcceptInvitation = (invitation) => {
+    socketService.acceptGameInvitation({
+      fromUsername: invitation.from,
+      inviterSocket: invitation.inviterSocket
+    });
+    setGameInvitation(null);
+  };
+
+  const handleDeclineInvitation = (invitation) => {
+    socketService.declineGameInvitation({
+      fromUsername: invitation.from,
+      inviterSocket: invitation.inviterSocket
+    });
+    setGameInvitation(null);
   };
 
   const resignGame = () => {
@@ -550,10 +577,10 @@ export default function GameScreen({ currentUser }) {
       <div className="header">
         <button 
           className={`header-button start-match-button ${gameStatus === 'playing' ? 'disabled-button' : ''}`}
-          onClick={() => setShowUsernameMatch(true)}
+          onClick={() => setShowOnlineUsers(true)}
           disabled={gameStatus === 'playing'}
         >
-          Start Match
+          Find Players
         </button>
 
         <div className="title-container">
@@ -615,12 +642,19 @@ export default function GameScreen({ currentUser }) {
         )}
       </div>
 
-      {/* Username Matching Modal */}
-      <UsernameMatchingModal
-        isVisible={showUsernameMatch}
-        onClose={() => setShowUsernameMatch(false)}
-        onSubmit={handleUsernameSubmit}
+      {/* Online Users Modal */}
+      <OnlineUsersModal
+        isVisible={showOnlineUsers}
+        onClose={() => setShowOnlineUsers(false)}
+        onInviteUser={handleInviteUser}
         currentUser={currentUser}
+      />
+
+      {/* Game Invitation Modal */}
+      <GameInvitationModal
+        invitation={gameInvitation}
+        onAccept={handleAcceptInvitation}
+        onDecline={handleDeclineInvitation}
       />
     </div>
   );

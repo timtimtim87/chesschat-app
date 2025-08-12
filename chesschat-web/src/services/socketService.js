@@ -253,10 +253,22 @@ class SocketService {
     }
   }
 
-  // New simplified game request methods
-  createGameRequest(targetUsername) {
+  // Simple game invitation methods
+  inviteUserToGame(targetUsername) {
     if (this.socket && this.isConnected) {
-      this.socket.emit('create-game-request', { targetUsername });
+      this.socket.emit('invite-user-to-game', { targetUsername });
+    }
+  }
+
+  acceptGameInvitation(data) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('accept-game-invitation', data);
+    }
+  }
+
+  declineGameInvitation(data) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('decline-game-invitation', data);
     }
   }
 
