@@ -1,11 +1,29 @@
-// database.js - PostgreSQL persistence layer
+// database.js - Fixed PostgreSQL persistence layer for Railway
 const { Pool } = require('pg');
 
 class Database {
   constructor() {
-    this.pool = new Pool({
+    // Configure connection for Railway
+    const connectionConfig = {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+      ssl: process.env.NODE_ENV === 'production' ? { 
+        rejectUnauthorized: false 
+      } : false,
+      // Connection pool settings for Railway
+      max: 10, // Maximum number of clients in the pool
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      // Additional settings for Railway
+      statement_timeout: 30000,
+      query_timeout: 30000,
+      application_name: 'chesschat-backend'
+    };
+
+    this.pool = new Pool(connectionConfig);
+    
+    // Handle pool errors
+    this.pool.on('error', (err) => {
+      console.error('❌ Unexpected error on idle client:', err);
     });
   }
 
@@ -13,6 +31,11 @@ class Database {
     try {
       const client = await this.pool.connect();
       console.log('📊 Connected to PostgreSQL database');
+      
+      // Test the connection
+      const result = await client.query('SELECT NOW()');
+      console.log('🕐 Database time:', result.rows[0].now);
+      
       client.release();
       await this.initTables();
     } catch (error) {
@@ -24,9 +47,16 @@ class Database {
   async initTables() {
     const client = await this.pool.connect();
     try {
+      // Drop and recreate tables to ensure clean state
       await client.query(`
+        -- Drop existing tables if they exist (for clean deployment)
+        DROP TABLE IF EXISTS game_history CASCADE;
+        DROP TABLE IF EXISTS friend_requests CASCADE;
+        DROP TABLE IF EXISTS friendships CASCADE;
+        DROP TABLE IF EXISTS users CASCADE;
+
         -- Users table
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE users (
           username VARCHAR(50) PRIMARY KEY,
           display_name VARCHAR(100) NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -38,7 +68,7 @@ class Database {
         );
 
         -- Friendships table (bidirectional relationships)
-        CREATE TABLE IF NOT EXISTS friendships (
+        CREATE TABLE friendships (
           id SERIAL PRIMARY KEY,
           user1 VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
           user2 VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
@@ -48,7 +78,7 @@ class Database {
         );
 
         -- Friend requests table
-        CREATE TABLE IF NOT EXISTS friend_requests (
+        CREATE TABLE friend_requests (
           id SERIAL PRIMARY KEY,
           from_user VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
           to_user VARCHAR(50) REFERENCES users(username) ON DELETE CASCADE,
@@ -57,8 +87,8 @@ class Database {
           CHECK (from_user != to_user)
         );
 
-        -- Game history table (for future use)
-        CREATE TABLE IF NOT EXISTS game_history (
+        -- Game history table
+        CREATE TABLE game_history (
           id SERIAL PRIMARY KEY,
           white_player VARCHAR(50) REFERENCES users(username),
           black_player VARCHAR(50) REFERENCES users(username),
@@ -75,6 +105,7 @@ class Database {
         CREATE INDEX IF NOT EXISTS idx_friend_requests_to_user ON friend_requests(to_user);
         CREATE INDEX IF NOT EXISTS idx_friend_requests_from_user ON friend_requests(from_user);
         CREATE INDEX IF NOT EXISTS idx_game_history_players ON game_history(white_player, black_player);
+        CREATE INDEX IF NOT EXISTS idx_users_last_seen ON users(last_seen);
       `);
       console.log('✅ Database tables initialized');
     } catch (error) {
@@ -90,7 +121,7 @@ class Database {
     const client = await this.pool.connect();
     try {
       const result = await client.query(
-        'INSERT INTO users (username, display_name) VALUES ($1, $2) ON CONFLICT (username) DO UPDATE SET last_seen = CURRENT_TIMESTAMP RETURNING *',
+        'INSERT INTO users (username, display_name) VALUES ($1, $2) ON CONFLICT (username) DO UPDATE SET last_seen = CURRENT_TIMESTAMP, display_name = EXCLUDED.display_name RETURNING *',
         [username, displayName]
       );
       return result.rows[0];
@@ -297,7 +328,7 @@ class Database {
     }
   }
 
-  // Game history (for future use)
+  // Game history
   async saveGameResult(gameData) {
     const client = await this.pool.connect();
     try {
@@ -399,8 +430,12 @@ class Database {
   }
 
   async close() {
-    await this.pool.end();
-    console.log('📊 Database connection closed');
+    try {
+      await this.pool.end();
+      console.log('📊 Database connection closed');
+    } catch (error) {
+      console.error('Error closing database:', error);
+    }
   }
 }
 

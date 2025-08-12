@@ -1,4 +1,4 @@
-// src/services/socketService.js - Enhanced with user system
+// src/services/socketService.js - Updated for Railway backend
 import io from 'socket.io-client';
 
 class SocketService {
@@ -9,14 +9,27 @@ class SocketService {
     this.currentUser = null;
   }
 
-  connect(serverUrl = 'https://chesschat-backend-production.up.railway.app') {
+  connect(serverUrl = null) {
     try {
-      this.socket = io(serverUrl, {
+      // Auto-detect server URL based on environment
+      const defaultServerUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://chesschat-backend-production.up.railway.app'
+        : 'http://localhost:3001';
+      
+      const finalServerUrl = serverUrl || defaultServerUrl;
+      
+      console.log('🔌 Connecting to:', finalServerUrl);
+      
+      this.socket = io(finalServerUrl, {
         transports: ['websocket', 'polling'],
         timeout: 20000,
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        forceNew: false,
+        withCredentials: true,
+        autoConnect: true
       });
 
       this.setupEventListeners();
@@ -37,8 +50,8 @@ class SocketService {
       this.notifyHandlers('connected');
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('💔 Disconnected from server');
+    this.socket.on('disconnect', (reason) => {
+      console.log('💔 Disconnected from server:', reason);
       this.isConnected = false;
       this.notifyHandlers('disconnected');
     });
@@ -46,6 +59,15 @@ class SocketService {
     this.socket.on('connect_error', (error) => {
       console.error('❌ Connection error:', error);
       this.notifyHandlers('connection_error', error);
+    });
+
+    this.socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+      this.notifyHandlers('reconnected');
+    });
+
+    this.socket.on('reconnect_error', (error) => {
+      console.error('❌ Reconnection error:', error);
     });
 
     // User system events
@@ -102,7 +124,7 @@ class SocketService {
       this.notifyHandlers('game-invitation-declined', data);
     });
 
-    // Existing game events
+    // Game events
     this.socket.on('matchmaking-joined', (data) => {
       console.log('🎯 Joined matchmaking:', data);
       this.notifyHandlers('matchmaking-joined', data);
@@ -131,6 +153,11 @@ class SocketService {
     this.socket.on('game-ended', (data) => {
       console.log('🏁 Game ended:', data);
       this.notifyHandlers('game-ended', data);
+    });
+
+    this.socket.on('opponent-disconnected', (data) => {
+      console.log('👋 Opponent disconnected:', data);
+      this.notifyHandlers('opponent-disconnected', data);
     });
 
     this.socket.on('time-update', (data) => {
@@ -171,8 +198,10 @@ class SocketService {
 
   // User system methods
   registerUser(username, displayName) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('register-user', { username, displayName });
+    } else {
+      console.error('❌ Socket not connected');
     }
   }
 
@@ -182,51 +211,51 @@ class SocketService {
 
   // Friend system methods
   sendFriendRequest(targetUsername) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('send-friend-request', { targetUsername });
     }
   }
 
   acceptFriendRequest(fromUsername) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('accept-friend-request', { fromUsername });
     }
   }
 
   declineFriendRequest(fromUsername) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('decline-friend-request', { fromUsername });
     }
   }
 
   getFriends() {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('get-friends');
     }
   }
 
   // Game invitation methods
   inviteFriend(friendUsername, gameType = '10min') {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('invite-friend', { friendUsername, gameType });
     }
   }
 
   acceptGameInvitation(inviteId) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('accept-game-invitation', { inviteId });
     }
   }
 
   declineGameInvitation(inviteId) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('decline-game-invitation', { inviteId });
     }
   }
 
-  // Existing matchmaking methods
+  // Matchmaking methods
   joinMatchmaking(playerData = {}) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('join-matchmaking', playerData);
     } else {
       console.error('❌ Socket not connected');
@@ -235,7 +264,7 @@ class SocketService {
 
   // Chess game methods
   makeMove(roomId, move, playerColor) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('make-move', {
         roomId,
         move,
@@ -245,7 +274,7 @@ class SocketService {
   }
 
   resign(roomId, playerColor) {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('resign', {
         roomId,
         playerColor
@@ -255,8 +284,14 @@ class SocketService {
 
   // Utility methods
   getStats() {
-    if (this.socket) {
+    if (this.socket && this.isConnected) {
       this.socket.emit('get-stats');
+    }
+  }
+
+  getUserStats(username = null) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('get-user-stats', { username });
     }
   }
 
@@ -276,6 +311,14 @@ class SocketService {
 
   isUserRegistered() {
     return this.currentUser !== null;
+  }
+
+  // Connection status
+  getConnectionStatus() {
+    if (!this.socket) return 'disconnected';
+    if (this.socket.connected) return 'connected';
+    if (this.socket.connecting) return 'connecting';
+    return 'disconnected';
   }
 }
 
