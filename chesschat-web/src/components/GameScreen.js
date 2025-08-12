@@ -1,9 +1,8 @@
-// src/components/GameScreen.js - Enhanced with user system integration
+// src/components/GameScreen.js - Simplified with username matching
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
 import VideoCall from './VideoCall';
-import Friends from './Friends';
 import socketService from '../services/socketService';
 import { Chess } from 'chess.js';
 
@@ -39,15 +38,6 @@ class AudioManager {
     if (type === 'move') {
       gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-    } else if (type === 'check') {
-      gainNode.gain.setValueAtTime(0.4, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-      oscillator.type = 'triangle';
-    } else if (type === 'checkmate') {
-      gainNode.gain.setValueAtTime(0.5, this.audioContext.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.2, this.audioContext.currentTime + duration * 0.3);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
-      oscillator.type = 'sawtooth';
     }
 
     oscillator.start(this.audioContext.currentTime);
@@ -56,17 +46,6 @@ class AudioManager {
 
   playMoveSound() {
     this.playTone(800, 0.1, 'move');
-  }
-
-  playCheckSound() {
-    this.playTone(1200, 0.3, 'check');
-    setTimeout(() => this.playTone(900, 0.3, 'check'), 100);
-  }
-
-  playCheckmateSound() {
-    this.playTone(400, 0.8, 'checkmate');
-    setTimeout(() => this.playTone(300, 0.6, 'checkmate'), 200);
-    setTimeout(() => this.playTone(200, 0.4, 'checkmate'), 400);
   }
 }
 
@@ -140,31 +119,99 @@ function GameStatusIndicator({ status }) {
   );
 }
 
-// Game Invitation Modal
-function GameInvitationModal({ invitation, onAccept, onDecline }) {
-  if (!invitation) return null;
+// Username Matching Component
+function UsernameMatchingModal({ isVisible, onClose, onSubmit, currentUser }) {
+  const [targetUsername, setTargetUsername] = useState('');
+  const [onlineUsers, setOnlineUsers] = useState([]);
+
+  useEffect(() => {
+    if (isVisible) {
+      socketService.getOnlineUsers();
+    }
+  }, [isVisible]);
+
+  useEffect(() => {
+    const handleOnlineUsers = (data) => {
+      setOnlineUsers(data.users);
+    };
+
+    socketService.on('online-users-list', handleOnlineUsers);
+
+    return () => {
+      socketService.off('online-users-list', handleOnlineUsers);
+    };
+  }, []);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (targetUsername.trim()) {
+      onSubmit(targetUsername.trim());
+      setTargetUsername('');
+    }
+  };
+
+  if (!isVisible) return null;
 
   return (
     <div className="friends-overlay">
-      <div className="invitation-modal">
-        <h3 className="invitation-title">Game Invitation</h3>
-        <p className="invitation-text">
-          <strong>{invitation.fromDisplayName}</strong> wants to play chess with you!
-        </p>
-        <p className="invitation-details">Game type: {invitation.gameType}</p>
-        <div className="invitation-actions">
-          <button 
-            onClick={() => onAccept(invitation.inviteId)}
-            className="accept-button"
-          >
-            Accept
-          </button>
-          <button 
-            onClick={() => onDecline(invitation.inviteId)}
-            className="decline-button"
-          >
-            Decline
-          </button>
+      <div className="friends-panel">
+        <div className="friends-header">
+          <h2 className="friends-title">Start Game</h2>
+          <button onClick={onClose} className="close-button">×</button>
+        </div>
+
+        <div className="friends-content">
+          <div className="add-friend-section">
+            <h3 className="section-title">Enter opponent's username</h3>
+            <form onSubmit={handleSubmit} className="add-friend-form">
+              <input
+                type="text"
+                value={targetUsername}
+                onChange={(e) => setTargetUsername(e.target.value)}
+                placeholder="Opponent's username"
+                className="friend-input"
+                minLength={3}
+                maxLength={20}
+                list="online-users"
+              />
+              <datalist id="online-users">
+                {onlineUsers.map(user => (
+                  <option key={user} value={user} />
+                ))}
+              </datalist>
+              <button
+                type="submit"
+                className="add-friend-button"
+                disabled={targetUsername.trim().length < 3}
+              >
+                Request Game
+              </button>
+            </form>
+          </div>
+
+          {onlineUsers.length > 0 && (
+            <div className="friends-list-section">
+              <h3 className="section-title">Online Users ({onlineUsers.length})</h3>
+              <div className="friends-list">
+                {onlineUsers.map((user) => (
+                  <div key={user} className="friend-item">
+                    <div className="friend-info">
+                      <div className="friend-name">
+                        <span className="friend-username">{user}</span>
+                        <span className="friend-status online">🟢 Online</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setTargetUsername(user)}
+                      className="invite-button"
+                    >
+                      Select
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -186,17 +233,11 @@ export default function GameScreen({ currentUser }) {
   const [roomId, setRoomId] = useState(null);
   const [opponent, setOpponent] = useState(null);
   const [gameChess, setGameChess] = useState(new Chess());
-  const [matchmakingMessage, setMatchmakingMessage] = useState('');
   
   // UI state
   const [notification, setNotification] = useState(null);
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
-  const [showFriends, setShowFriends] = useState(false);
-  
-  // Friends state
-  const [friends, setFriends] = useState([]);
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [gameInvitation, setGameInvitation] = useState(null);
+  const [showUsernameMatch, setShowUsernameMatch] = useState(false);
 
   // Initialize audio on first user interaction
   useEffect(() => {
@@ -226,13 +267,6 @@ export default function GameScreen({ currentUser }) {
     }
   }, [board, playerColor]);
 
-  // Load friends list on component mount
-  useEffect(() => {
-    if (currentUser) {
-      socketService.getFriends();
-    }
-  }, [currentUser]);
-
   // Notification helpers
   const showNotification = (message, type = 'info') => {
     setNotification({ message, type });
@@ -249,56 +283,22 @@ export default function GameScreen({ currentUser }) {
 
   // Socket event handlers
   useEffect(() => {
-    // Friend system events
-    socketService.on('friends-list', (data) => {
-      setFriends(data.friends || []);
-      setPendingRequests(data.pendingRequests || []);
-    });
+    // Game request events
+    const handleGameRequestReceived = (data) => {
+      showNotification(`${data.from} wants to play chess with you! Send them a request back to start the game.`, 'info');
+    };
 
-    socketService.on('friend-request-received', (data) => {
-      showNotification(`Friend request from ${data.displayName || data.from}`, 'info');
-      setPendingRequests(prev => [...prev, data]);
-    });
+    const handleGameRequestSent = (data) => {
+      showNotification(data.message, 'success');
+    };
 
-    socketService.on('friend-added', (data) => {
-      showNotification(`${data.username} is now your friend!`, 'success');
-      socketService.getFriends(); // Refresh friends list
-    });
-
-    socketService.on('friend-status-update', (data) => {
-      setFriends(prev => prev.map(friend => 
-        friend.username === data.username 
-          ? { ...friend, online: data.status === 'online' }
-          : friend
-      ));
-    });
-
-    socketService.on('game-invitation-received', (data) => {
-      setGameInvitation(data);
-      showNotification(`Game invitation from ${data.fromDisplayName}!`, 'info');
-    });
-
-    socketService.on('game-invitation-sent', (data) => {
-      showNotification(`Invitation sent to ${data.to}`, 'success');
-    });
-
-    socketService.on('game-invitation-declined', (data) => {
-      showNotification(`${data.by} declined your invitation`, 'warning');
-    });
-
-    // Matchmaking events
-    socketService.on('matchmaking-joined', (data) => {
-      setMatchmakingMessage(data.message || 'Searching for opponent...');
-      showNotification('Searching for random opponent...', 'info');
-    });
-
-    socketService.on('match-found', (data) => {
+    // Game events
+    const handleMatchFound = (data) => {
       setRoomId(data.roomId);
       setPlayerColor(data.color);
       setOpponent(data.opponent);
       setGameStatus('playing');
-      setMatchmakingMessage('');
-      setGameInvitation(null); // Clear any pending invitation
+      setShowUsernameMatch(false);
       
       const chess = new Chess(data.gameState.fen);
       setGameChess(chess);
@@ -307,16 +307,11 @@ export default function GameScreen({ currentUser }) {
       setWhiteTime(data.gameState.whiteTime);
       setBlackTime(data.gameState.blackTime);
       
-      showNotification(`Match found! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
+      showNotification(`Game started! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
       audioManager.playMoveSound();
-    });
+    };
 
-    socketService.on('waiting-for-opponent', (data) => {
-      setMatchmakingMessage(`Waiting for opponent... (Position: ${data.position})`);
-    });
-
-    // Game events
-    socketService.on('move-made', (data) => {
+    const handleMoveMade = (data) => {
       const chess = new Chess(data.fen);
       setGameChess(chess);
       setBoard(fenToBoard(data.fen));
@@ -330,10 +325,8 @@ export default function GameScreen({ currentUser }) {
       if (chess.isCheck()) {
         if (chess.isCheckmate()) {
           showGameStatus('CHECKMATE!', 'checkmate', 3000);
-          audioManager.playCheckmateSound();
         } else {
           showGameStatus('CHECK!', 'check', 2000);
-          audioManager.playCheckSound();
         }
       }
       
@@ -344,22 +337,19 @@ export default function GameScreen({ currentUser }) {
         let message = 'Game Over! ';
         if (data.winner) {
           message += `${data.winner} wins by ${data.reason}!`;
-          if (data.reason === 'checkmate') {
-            audioManager.playCheckmateSound();
-          }
         } else {
           message += `Draw by ${data.reason}!`;
         }
         showNotification(message, 'info');
       }
-    });
+    };
 
-    socketService.on('invalid-move', (data) => {
+    const handleInvalidMove = (data) => {
       showNotification(`Invalid move: ${data.reason}`, 'error');
       setSelectedSquare(null);
-    });
+    };
 
-    socketService.on('game-ended', (data) => {
+    const handleGameEnded = (data) => {
       setGameStatus('ended');
       setGameWinner(data.winner);
       
@@ -372,39 +362,37 @@ export default function GameScreen({ currentUser }) {
         message += `${data.winner} wins! ${data.disconnectedPlayer} disconnected.`;
       }
       showNotification(message, 'warning');
-    });
+    };
 
-    socketService.on('opponent-disconnected', (data) => {
-      showNotification('Opponent disconnected. You will win if they don\'t reconnect in 30s.', 'warning');
-    });
-
-    socketService.on('time-update', (data) => {
+    const handleTimeUpdate = (data) => {
       setWhiteTime(data.whiteTime);
       setBlackTime(data.blackTime);
-    });
+    };
 
-    socketService.on('error', (data) => {
+    const handleError = (data) => {
       showNotification(`Error: ${data.message}`, 'error');
-    });
+    };
+
+    // Add event listeners
+    socketService.on('game-request-received', handleGameRequestReceived);
+    socketService.on('game-request-sent', handleGameRequestSent);
+    socketService.on('match-found', handleMatchFound);
+    socketService.on('move-made', handleMoveMade);
+    socketService.on('invalid-move', handleInvalidMove);
+    socketService.on('game-ended', handleGameEnded);
+    socketService.on('time-update', handleTimeUpdate);
+    socketService.on('error', handleError);
 
     return () => {
       // Cleanup event listeners
-      socketService.off('friends-list');
-      socketService.off('friend-request-received');
-      socketService.off('friend-added');
-      socketService.off('friend-status-update');
-      socketService.off('game-invitation-received');
-      socketService.off('game-invitation-sent');
-      socketService.off('game-invitation-declined');
-      socketService.off('matchmaking-joined');
-      socketService.off('match-found');
-      socketService.off('waiting-for-opponent');
-      socketService.off('move-made');
-      socketService.off('invalid-move');
-      socketService.off('game-ended');
-      socketService.off('opponent-disconnected');
-      socketService.off('time-update');
-      socketService.off('error');
+      socketService.off('game-request-received', handleGameRequestReceived);
+      socketService.off('game-request-sent', handleGameRequestSent);
+      socketService.off('match-found', handleMatchFound);
+      socketService.off('move-made', handleMoveMade);
+      socketService.off('invalid-move', handleInvalidMove);
+      socketService.off('game-ended', handleGameEnded);
+      socketService.off('time-update', handleTimeUpdate);
+      socketService.off('error', handleError);
     };
   }, []);
 
@@ -452,12 +440,10 @@ export default function GameScreen({ currentUser }) {
             if (testChess.isCheck()) {
               if (testChess.isCheckmate()) {
                 showGameStatus('CHECKMATE!', 'checkmate', 3000);
-                audioManager.playCheckmateSound();
                 setGameStatus('ended');
                 setGameWinner(testChess.turn() === 'w' ? 'black' : 'white');
               } else {
                 showGameStatus('CHECK!', 'check', 2000);
-                audioManager.playCheckSound();
               }
             }
           }
@@ -503,26 +489,19 @@ export default function GameScreen({ currentUser }) {
     showNotification('Practice game started', 'info');
   };
 
-  const enterMatchmaking = () => {
-    if (!socketService.isUserRegistered()) {
-      showNotification('Please register a username first', 'error');
-      return;
-    }
-    
-    setGameStatus('waiting');
-    setMatchmakingMessage('Joining matchmaking...');
-    
-    socketService.joinMatchmaking({
-      preferredTime: '10min'
-    });
+  const handleUsernameSubmit = (targetUsername) => {
+    socketService.createGameRequest(targetUsername);
   };
 
-  
   const resignGame = () => {
+    console.log('Resign clicked - roomId:', roomId, 'playerColor:', playerColor, 'gameStatus:', gameStatus);
+    
     if (window.confirm("Are you sure you want to resign?")) {
       if (roomId && playerColor) {
+        console.log('Sending resign to server');
         socketService.resign(roomId, playerColor);
       } else {
+        console.log('Local game resignation');
         setGameWinner(playerColor === 'white' ? 'black' : 'white');
         setGameStatus('ended');
         showNotification('You resigned', 'info');
@@ -540,36 +519,7 @@ export default function GameScreen({ currentUser }) {
     setDisplayBoard([]);
     setCurrentTurn('white');
     setSelectedSquare(null);
-    setMatchmakingMessage('');
     hideNotification();
-  };
-
-  // Friend management functions
-  const handleAddFriend = (username) => {
-    socketService.sendFriendRequest(username);
-  };
-
-  const handleAcceptFriend = (username) => {
-    socketService.acceptFriendRequest(username);
-  };
-
-  const handleDeclineFriend = (username) => {
-    socketService.declineFriendRequest(username);
-  };
-
-  const handleInviteFriend = (friendUsername) => {
-    socketService.inviteFriend(friendUsername, '10min');
-    setShowFriends(false);
-  };
-
-  const handleAcceptInvitation = (inviteId) => {
-    socketService.acceptGameInvitation(inviteId);
-    setGameInvitation(null);
-  };
-
-  const handleDeclineInvitation = (inviteId) => {
-    socketService.declineGameInvitation(inviteId);
-    setGameInvitation(null);
   };
 
   // Get display names for players
@@ -600,38 +550,28 @@ export default function GameScreen({ currentUser }) {
       <div className="header">
         <button 
           className={`header-button start-match-button ${gameStatus === 'playing' ? 'disabled-button' : ''}`}
-          onClick={enterMatchmaking}
+          onClick={() => setShowUsernameMatch(true)}
           disabled={gameStatus === 'playing'}
         >
-          {gameStatus === 'waiting' ? 'Searching...' : 'Start Match'}
+          Start Match
         </button>
 
         <div className="title-container">
           <div className="title">ChessChat</div>
           <div className="status">
             {gameStatus === 'idle' && `Welcome ${currentUser?.username}!`}
-            {gameStatus === 'waiting' && matchmakingMessage}
             {gameStatus === 'playing' && getCurrentPlayerName()}
             {gameStatus === 'ended' && `${gameWinner} wins!`}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button 
-            onClick={() => setShowFriends(true)}
-            className="friends-button"
-          >
-            👥 Friends ({friends.length})
-          </button>
-          
-          <button 
-            className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
-            onClick={resignGame}
-            disabled={gameStatus !== 'playing'}
-          >
-            Resign
-          </button>
-        </div>
+        <button 
+          className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
+          onClick={resignGame}
+          disabled={gameStatus !== 'playing'}
+        >
+          Resign
+        </button>
       </div>
 
       <div className="game-main">
@@ -675,24 +615,12 @@ export default function GameScreen({ currentUser }) {
         )}
       </div>
 
-      {/* Friends Panel */}
-      <Friends
-        friends={friends}
-        pendingRequests={pendingRequests}
-        onAddFriend={handleAddFriend}
-        onAcceptFriend={handleAcceptFriend}
-        onDeclineFriend={handleDeclineFriend}
-        onInviteFriend={handleInviteFriend}
+      {/* Username Matching Modal */}
+      <UsernameMatchingModal
+        isVisible={showUsernameMatch}
+        onClose={() => setShowUsernameMatch(false)}
+        onSubmit={handleUsernameSubmit}
         currentUser={currentUser}
-        isVisible={showFriends}
-        onClose={() => setShowFriends(false)}
-      />
-
-      {/* Game Invitation Modal */}
-      <GameInvitationModal
-        invitation={gameInvitation}
-        onAccept={handleAcceptInvitation}
-        onDecline={handleDeclineInvitation}
       />
     </div>
   );

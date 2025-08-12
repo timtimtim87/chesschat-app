@@ -253,7 +253,20 @@ class SocketService {
     }
   }
 
-  // Matchmaking methods
+  // New simplified game request methods
+  createGameRequest(targetUsername) {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('create-game-request', { targetUsername });
+    }
+  }
+
+  getOnlineUsers() {
+    if (this.socket && this.isConnected) {
+      this.socket.emit('get-online-users');
+    }
+  }
+
+  // Matchmaking methods (keeping for practice mode)
   joinMatchmaking(playerData = {}) {
     if (this.socket && this.isConnected) {
       this.socket.emit('join-matchmaking', playerData);
