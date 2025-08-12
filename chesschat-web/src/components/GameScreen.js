@@ -517,6 +517,7 @@ export default function GameScreen({ currentUser }) {
     });
   };
 
+  
   const resignGame = () => {
     if (window.confirm("Are you sure you want to resign?")) {
       if (roomId && playerColor) {
