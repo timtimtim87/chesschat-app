@@ -16,7 +16,8 @@
     "socket.io": "^4.7.5",
     "cors": "^2.8.5",
     "chess.js": "^1.0.0-beta.6",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

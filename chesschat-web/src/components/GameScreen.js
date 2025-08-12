@@ -258,8 +258,8 @@ export default function GameScreen({ currentUser }) {
     });
 
     socketService.on('friend-request-received', (data) => {
-      showNotification(`Friend request from ${data.from}`, 'info');
-      setPendingRequests(prev => [...prev, data.from]);
+      showNotification(`Friend request from ${data.displayName || data.from}`, 'info');
+      setPendingRequests(prev => [...prev, data]);
     });
 
     socketService.on('friend-added', (data) => {

@@ -78,21 +78,21 @@ export default function Friends({
             <div className="pending-requests-section">
               <h3 className="section-title">Friend Requests</h3>
               <div className="requests-list">
-                {pendingRequests.map((requestUsername) => (
-                  <div key={requestUsername} className="request-item">
+                {pendingRequests.map((request) => (
+                  <div key={request.from} className="request-item">
                     <div className="request-info">
-                      <span className="request-username">{requestUsername}</span>
+                      <span className="request-username">{request.displayName || request.from}</span>
                       <span className="request-label">wants to be friends</span>
                     </div>
                     <div className="request-actions">
                       <button
-                        onClick={() => onAcceptFriend(requestUsername)}
+                        onClick={() => onAcceptFriend(request.from)}
                         className="accept-button"
                       >
                         Accept
                       </button>
                       <button
-                        onClick={() => onDeclineFriend(requestUsername)}
+                        onClick={() => onDeclineFriend(request.from)}
                         className="decline-button"
                       >
                         Decline
@@ -121,7 +121,7 @@ export default function Friends({
                   <div key={friend.username} className="friend-item">
                     <div className="friend-info">
                       <div className="friend-name">
-                        <span className="friend-username">{friend.username}</span>
+                        <span className="friend-username">{friend.displayName || friend.username}</span>
                         <span className={`friend-status ${friend.online ? 'online' : 'offline'}`}>
                           {friend.online ? '🟢 Online' : '⚫ Offline'}
                         </span>
