@@ -63,7 +63,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, callObject }
   const toggleVideo = async () => {
     if (callObject && !isOpponent) {
       try {
-        const newState = await callObject.setLocalVideo(!isVideoEnabled);
+        await callObject.setLocalVideo(!isVideoEnabled);
         setIsVideoEnabled(!isVideoEnabled);
       } catch (error) {
         console.error('Error toggling video:', error);

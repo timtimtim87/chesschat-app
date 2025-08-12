@@ -1,5 +1,5 @@
 // src/components/GameScreen.js - Enhanced with user system integration
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
 import VideoCall from './VideoCall';
