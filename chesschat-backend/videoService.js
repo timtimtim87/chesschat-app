@@ -1,4 +1,4 @@
-// chesschat-backend/videoService.js - Restored working version with just audio fixes
+// chesschat-backend/videoService.js - Complete fixed version
 require('dotenv').config();
 
 class VideoService {
@@ -11,10 +11,12 @@ class VideoService {
       console.warn('⚠️  DAILY_API_KEY not configured - video features will be disabled');
     } else {
       console.log('✅ Daily.co API key configured');
+      console.log('🔑 API Key length:', this.apiKey.length);
+      console.log('🏠 Domain:', this.dailyDomain || 'not set');
     }
   }
 
-  // Create a Daily.co room for a chess game
+  // Create a Daily.co room for a chess game - FIXED VERSION
   async createGameRoom(gameId, playerNames = []) {
     if (!this.apiKey) {
       console.log('⚠️  Daily.co not configured, skipping video room creation');
@@ -23,6 +25,7 @@ class VideoService {
 
     const roomName = `chess-${gameId}-${Date.now()}`;
     
+    // Simplified room config that should work
     const roomConfig = {
       name: roomName,
       properties: {
@@ -30,21 +33,15 @@ class VideoService {
         enable_chat: false,
         enable_screenshare: false,
         enable_recording: false,
-        enable_dialin: false,
         start_video_off: false,
         start_audio_off: false,
-        owner_only_broadcast: false,
-        enable_prejoin_ui: false,
-        enable_network_ui: false,
-        enable_people_ui: true,
-        lang: 'en',
-        exp: Math.round(Date.now() / 1000) + (60 * 60 * 3), // 3 hour expiry
-        eject_at_room_exp: true
+        exp: Math.round(Date.now() / 1000) + (60 * 60 * 3) // 3 hour expiry
       }
     };
 
     try {
       console.log('🎥 Creating Daily.co room:', roomName);
+      console.log('🔧 Room config:', JSON.stringify(roomConfig, null, 2));
       
       const response = await fetch(`${this.apiUrl}/rooms`, {
         method: 'POST',
@@ -55,15 +52,28 @@ class VideoService {
         body: JSON.stringify(roomConfig)
       });
 
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorText = await response.text();
+        console.error('❌ Daily API error response:', errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText };
+        }
+        
         throw new Error(`Daily API error: ${response.status} - ${errorData.error || response.statusText}`);
       }
 
       const roomData = await response.json();
       
-      console.log(`🎥 Created Daily.co room: ${roomData.name}`);
+      console.log(`✅ Created Daily.co room: ${roomData.name}`);
       console.log(`🔗 Room URL: ${roomData.url}`);
+      console.log(`📊 Full room data:`, JSON.stringify(roomData, null, 2));
       
       return {
         id: roomData.id,
@@ -76,6 +86,8 @@ class VideoService {
       
     } catch (error) {
       console.error('❌ Failed to create Daily.co room:', error.message);
+      console.error('❌ Full error:', error);
+      
       // Don't throw error - game should continue without video
       return null;
     }
@@ -88,6 +100,8 @@ class VideoService {
     }
 
     try {
+      console.log(`🗑️  Deleting Daily.co room: ${roomName}`);
+      
       const response = await fetch(`${this.apiUrl}/rooms/${roomName}`, {
         method: 'DELETE',
         headers: {
@@ -96,10 +110,14 @@ class VideoService {
       });
 
       if (response.ok) {
-        console.log(`🗑️  Deleted Daily.co room: ${roomName}`);
+        console.log(`✅ Deleted Daily.co room: ${roomName}`);
+        return true;
+      } else if (response.status === 404) {
+        console.log(`ℹ️  Room ${roomName} not found (already deleted)`);
         return true;
       } else {
-        console.warn(`⚠️  Failed to delete room ${roomName}: ${response.status}`);
+        const errorText = await response.text();
+        console.warn(`⚠️  Failed to delete room ${roomName}: ${response.status} - ${errorText}`);
         return false;
       }
       
@@ -137,51 +155,58 @@ class VideoService {
     }
   }
 
-  // Create meeting token for enhanced security (optional)
-  async createMeetingToken(roomName, userName, isOwner = false) {
-    if (!this.apiKey || !roomName) {
-      return null;
+  // Test the API connection and permissions
+  async testApiConnection() {
+    if (!this.apiKey) {
+      return {
+        success: false,
+        error: 'No API key configured'
+      };
     }
 
-    const tokenConfig = {
-      properties: {
-        room_name: roomName,
-        user_name: userName,
-        is_owner: isOwner,
-        exp: Math.round(Date.now() / 1000) + (60 * 60 * 3), // 3 hours
-        enable_screenshare: false,
-        enable_recording: false,
-        start_video_off: false,
-        start_audio_off: false
-      }
-    };
-
     try {
-      const response = await fetch(`${this.apiUrl}/meeting-tokens`, {
-        method: 'POST',
+      console.log('🧪 Testing Daily.co API connection...');
+      
+      // First, try to list existing rooms to test the API key
+      const response = await fetch(`${this.apiUrl}/rooms`, {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.apiKey}`
-        },
-        body: JSON.stringify(tokenConfig)
+        }
       });
 
+      console.log('📡 Test response status:', response.status);
+
       if (response.ok) {
-        const tokenData = await response.json();
-        console.log(`🎫 Created meeting token for ${userName} in room ${roomName}`);
-        return tokenData.token;
+        const data = await response.json();
+        console.log('✅ API connection successful');
+        console.log('📊 Existing rooms:', data.total_count || 0);
+        
+        return {
+          success: true,
+          message: 'API connection successful',
+          existingRooms: data.total_count || 0
+        };
       } else {
-        console.warn(`⚠️  Failed to create meeting token: ${response.status}`);
-        return null;
+        const errorText = await response.text();
+        console.error('❌ API test failed:', response.status, errorText);
+        
+        return {
+          success: false,
+          error: `API test failed: ${response.status} - ${errorText}`
+        };
       }
       
     } catch (error) {
-      console.error('❌ Error creating meeting token:', error.message);
-      return null;
+      console.error('❌ API test error:', error.message);
+      return {
+        success: false,
+        error: `Connection error: ${error.message}`
+      };
     }
   }
 
-  // Cleanup expired rooms (utility function)
+  // Cleanup expired rooms
   async cleanupExpiredRooms() {
     if (!this.apiKey) {
       return;
@@ -219,14 +244,14 @@ class VideoService {
 
   // Check if Daily.co is properly configured
   isConfigured() {
-    return !!(this.apiKey && this.dailyDomain);
+    return !!(this.apiKey);
   }
 
   // Get service status
   getStatus() {
     return {
       configured: this.isConfigured(),
-      apiKey: this.apiKey ? '***configured***' : 'missing',
+      apiKey: this.apiKey ? 'configured' : 'missing',
       domain: this.dailyDomain || 'not set'
     };
   }

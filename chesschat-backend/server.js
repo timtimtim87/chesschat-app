@@ -1,4 +1,4 @@
-// server.js - Complete with video integration
+// server.js - Complete working version with video room creation
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -16,6 +16,14 @@ const PORT = process.env.PORT || 3001;
 
 // Initialize video service
 const videoService = new VideoService();
+
+// Debug video service status on startup
+console.log('🎥 Video Service Debug:', {
+  hasApiKey: !!process.env.DAILY_API_KEY,
+  apiKeyLength: process.env.DAILY_API_KEY ? process.env.DAILY_API_KEY.length : 0,
+  isConfigured: videoService.isConfigured(),
+  status: videoService.getStatus()
+});
 
 // CORS configuration for Railway deployment
 const corsOrigins = [
@@ -116,8 +124,10 @@ function createGameRoom(player1, player2) {
   return gameRoom;
 }
 
-// Helper function to start game between two users
+// Helper function to start game between two users with proper video creation
 async function startGameBetweenUsers(user1, user2) {
+  console.log(`🎮 Starting game between ${user1.username} and ${user2.username}`);
+  
   // Create game room
   const gameRoom = createGameRoom(user1, user2);
   
@@ -137,21 +147,32 @@ async function startGameBetweenUsers(user1, user2) {
     gameRoom.players.white = user1Color === 'white' ? user1 : user2;
     gameRoom.players.black = user1Color === 'black' ? user1 : user2;
     
-    // Create video room
-    try {
-      const videoRoom = await videoService.createGameRoom(
-        gameRoom.id, 
-        [user1.username, user2.username]
-      );
-      
-      if (videoRoom) {
-        gameRoom.videoRoom = videoRoom;
-        console.log(`🎥 Video room created for game ${gameRoom.id}: ${videoRoom.url}`);
-      } else {
-        console.log(`⚠️  Video room creation failed for game ${gameRoom.id}, continuing without video`);
+    // Create video room - Fixed with proper async handling
+    console.log('🎥 Attempting to create video room...');
+    console.log('🎥 Video service configured:', videoService.isConfigured());
+    
+    let videoRoom = null;
+    if (videoService.isConfigured()) {
+      try {
+        videoRoom = await videoService.createGameRoom(
+          gameRoom.id, 
+          [user1.username, user2.username]
+        );
+        
+        if (videoRoom) {
+          console.log(`✅ Video room created successfully: ${videoRoom.url}`);
+          gameRoom.videoRoom = videoRoom;
+        } else {
+          console.warn('⚠️  Video room creation returned null');
+          gameRoom.videoRoom = null;
+        }
+      } catch (error) {
+        console.error('❌ Error creating video room:', error);
+        gameRoom.videoRoom = null;
       }
-    } catch (error) {
-      console.error(`❌ Video room creation error for game ${gameRoom.id}:`, error);
+    } else {
+      console.log('⚠️  Video service not configured, skipping video room creation');
+      gameRoom.videoRoom = null;
     }
     
     // Prepare game data for both players
@@ -165,6 +186,11 @@ async function startGameBetweenUsers(user1, user2) {
       },
       videoRoom: gameRoom.videoRoom // Include video room info
     };
+    
+    console.log('📤 Sending match-found event with video room:', gameRoom.videoRoom ? 'YES' : 'NO');
+    if (gameRoom.videoRoom) {
+      console.log('🔗 Video URL:', gameRoom.videoRoom.url);
+    }
     
     // Notify both players
     socket1.emit('match-found', {
@@ -228,7 +254,6 @@ io.on('connection', (socket) => {
       });
 
       console.log(`👤 User registered: ${username} (Total online: ${userSockets.size})`);
-      console.log(`📊 Online users: [${Array.from(userSockets.keys()).join(', ')}]`);
     } catch (error) {
       console.error('Registration error:', error);
       socket.emit('registration-error', { 
@@ -237,8 +262,8 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Simplified matching system - enter a code to match
-  socket.on('enter-match-code', (data) => {
+  // Enhanced matching system with better logging
+  socket.on('enter-match-code', async (data) => {
     const user = getUserBySocket(socket.id);
     if (!user) {
       socket.emit('error', { message: 'User not found' });
@@ -291,8 +316,8 @@ io.on('connection', (socket) => {
       
       console.log(`🎮 MATCH FOUND! ${player1.username} vs ${player2.username} (code: ${code})`);
       
-      // Start the game (now includes video room creation)
-      startGameBetweenUsers(player1, player2);
+      // Start the game with video room creation
+      await startGameBetweenUsers(player1, player2);
       
       // Clean up - remove these two users from the code
       waitingUsers.splice(0, 2);
@@ -304,7 +329,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Get online users (keeping for debug)
+  // Get online users
   socket.on('get-online-users', () => {
     const user = getUserBySocket(socket.id);
     if (!user) {
@@ -312,10 +337,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Get all online users except the requesting user
     const onlineUsers = Array.from(userSockets.keys()).filter(username => username !== user.username);
-    
-    console.log(`📋 Sending online users to ${user.username}:`, onlineUsers);
     socket.emit('online-users-list', { users: onlineUsers });
   });
 
@@ -390,7 +412,7 @@ io.on('connection', (socket) => {
           if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
             setTimeout(() => {
               videoService.deleteGameRoom(gameRoom.videoRoom.name);
-            }, 30000); // 30 second delay to allow players to see final position
+            }, 30000); // 30 second delay
           }
         }
         
@@ -456,7 +478,6 @@ io.on('connection', (socket) => {
           users.splice(userIndex, 1);
           console.log(`🧹 Removed ${user.username} from code: ${code}`);
           
-          // If no users left, delete the code
           if (users.length === 0) {
             matchingCodes.delete(code);
           }
@@ -540,7 +561,7 @@ function stopGameTimer(roomId) {
   }
 }
 
-// Health check endpoint
+// Enhanced health check endpoint
 app.get('/health', async (req, res) => {
   let dbStatus = 'not configured';
   let dbUsers = 0;
@@ -556,7 +577,6 @@ app.get('/health', async (req, res) => {
     }
   }
 
-  // Get current online users for debugging
   const onlineUsers = Array.from(userSockets.keys());
 
   res.json({
@@ -569,7 +589,11 @@ app.get('/health', async (req, res) => {
     onlineUsers: onlineUsers,
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
-    video: videoService.getStatus()
+    video: {
+      ...videoService.getStatus(),
+      hasApiKey: !!process.env.DAILY_API_KEY,
+      apiKeyLength: process.env.DAILY_API_KEY ? process.env.DAILY_API_KEY.length : 0
+    }
   });
 });
 
@@ -585,12 +609,92 @@ app.get('/online-users', (req, res) => {
 
 // Video service endpoints for debugging
 app.get('/video/status', (req, res) => {
-  res.json(videoService.getStatus());
+  res.json({
+    ...videoService.getStatus(),
+    hasApiKey: !!process.env.DAILY_API_KEY,
+    apiKeyLength: process.env.DAILY_API_KEY ? process.env.DAILY_API_KEY.length : 0
+  });
+});
+
+// Test video room creation
+app.get('/video/test', async (req, res) => {
+  console.log('🧪 Video test endpoint called');
+  
+  if (!videoService.isConfigured()) {
+    return res.json({
+      success: false,
+      error: 'Video service not configured',
+      hasApiKey: !!process.env.DAILY_API_KEY,
+      status: videoService.getStatus()
+    });
+  }
+
+  // First test API connection
+  try {
+    const connectionTest = await videoService.testApiConnection();
+    if (!connectionTest.success) {
+      return res.json({
+        success: false,
+        error: 'API connection failed',
+        details: connectionTest
+      });
+    }
+
+    // Then test room creation
+    console.log('🎬 Creating test room...');
+    const testRoom = await videoService.createGameRoom('test-' + Date.now(), ['TestUser1', 'TestUser2']);
+    
+    if (testRoom) {
+      console.log('✅ Test room created successfully:', testRoom.name);
+      
+      // Clean up test room after 30 seconds
+      setTimeout(() => {
+        console.log('🧹 Cleaning up test room...');
+        videoService.deleteGameRoom(testRoom.name);
+      }, 30000);
+      
+      res.json({
+        success: true,
+        message: 'Video room created successfully',
+        room: testRoom,
+        connectionTest: connectionTest
+      });
+    } else {
+      res.json({
+        success: false,
+        error: 'Failed to create test room - createGameRoom returned null',
+        connectionTest: connectionTest
+      });
+    }
+  } catch (error) {
+    console.error('❌ Test room creation error:', error);
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Test API connection only
+app.get('/video/test-api', async (req, res) => {
+  try {
+    const result = await videoService.testApiConnection();
+    res.json(result);
+  } catch (error) {
+    res.json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // Cleanup expired video rooms every hour
 setInterval(() => {
-  videoService.cleanupExpiredRooms();
+  try {
+    videoService.cleanupExpiredRooms();
+  } catch (error) {
+    console.error('Error during scheduled cleanup:', error);
+  }
 }, 60 * 60 * 1000);
 
 // Graceful shutdown
@@ -621,6 +725,7 @@ async function startServer() {
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
     console.log(`💾 Database: ${db ? 'PostgreSQL connected' : 'Memory-only mode'}`);
     console.log(`🎥 Video service: ${videoService.isConfigured() ? 'Daily.co configured' : 'Video disabled'}`);
+    console.log(`🎥 Video test: http://localhost:${PORT}/video/test`);
     console.log(`⚡ Game engine: Code matching system`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   });

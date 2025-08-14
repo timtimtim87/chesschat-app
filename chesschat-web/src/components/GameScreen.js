@@ -1,4 +1,4 @@
-// src/components/GameScreen.js - Complete with video integration
+// src/components/GameScreen.js - Complete enhanced video integration
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
@@ -7,46 +7,73 @@ import socketService from '../services/socketService';
 import dailyService from '../services/dailyService';
 import { Chess } from 'chess.js';
 
-// Audio context for sounds
+// Enhanced Audio Manager with better mobile support
 class AudioManager {
   constructor() {
     this.audioContext = null;
     this.initialized = false;
+    this.moveSound = null;
   }
 
   async initialize() {
     if (this.initialized) return;
     try {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      
+      // Resume context if suspended (mobile Safari)
+      if (this.audioContext.state === 'suspended') {
+        await this.audioContext.resume();
+      }
+      
       this.initialized = true;
+      console.log('🔊 Audio manager initialized');
     } catch (error) {
       console.warn('Audio not available:', error);
     }
   }
 
   playTone(frequency, duration, type = 'move') {
-    if (!this.audioContext) return;
-
-    const oscillator = this.audioContext.createOscillator();
-    const gainNode = this.audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(this.audioContext.destination);
-
-    oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
-    oscillator.type = 'sine';
-
-    if (type === 'move') {
-      gainNode.gain.setValueAtTime(0.3, this.audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+    if (!this.audioContext || this.audioContext.state !== 'running') {
+      console.warn('Audio context not ready');
+      return;
     }
 
-    oscillator.start(this.audioContext.currentTime);
-    oscillator.stop(this.audioContext.currentTime + duration);
+    try {
+      const oscillator = this.audioContext.createOscillator();
+      const gainNode = this.audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioContext.destination);
+
+      oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+      oscillator.type = 'sine';
+
+      if (type === 'move') {
+        gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+      }
+
+      oscillator.start(this.audioContext.currentTime);
+      oscillator.stop(this.audioContext.currentTime + duration);
+    } catch (error) {
+      console.warn('Error playing tone:', error);
+    }
   }
 
   playMoveSound() {
-    this.playTone(800, 0.1, 'move');
+    this.playTone(800, 0.15, 'move');
+  }
+
+  async ensureAudioReady() {
+    await this.initialize();
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+        console.log('🔊 Audio context resumed');
+      } catch (error) {
+        console.warn('Could not resume audio context:', error);
+      }
+    }
   }
 }
 
@@ -95,7 +122,7 @@ function flipBoard(board) {
 function NotificationBar({ notification, onClose }) {
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(onClose, 4000);
+      const timer = setTimeout(onClose, 5000); // Increased to 5 seconds
       return () => clearTimeout(timer);
     }
   }, [notification, onClose]);
@@ -105,6 +132,19 @@ function NotificationBar({ notification, onClose }) {
   return (
     <div className={`notification-bar ${notification.type}`}>
       {notification.message}
+      <button 
+        onClick={onClose}
+        style={{
+          marginLeft: '12px',
+          background: 'none',
+          border: 'none',
+          color: 'inherit',
+          cursor: 'pointer',
+          fontSize: '16px'
+        }}
+      >
+        ×
+      </button>
     </div>
   );
 }
@@ -120,7 +160,7 @@ function GameStatusIndicator({ status }) {
   );
 }
 
-// Simplified Match Code Modal
+// Enhanced Match Code Modal
 function MatchModal({ isVisible, onClose, currentUser }) {
   const [matchCode, setMatchCode] = useState('');
   const [isEntering, setIsEntering] = useState(false);
@@ -133,7 +173,7 @@ function MatchModal({ isVisible, onClose, currentUser }) {
       
       setIsEntering(true);
       socketService.enterMatchCode(matchCode.trim());
-      setTimeout(() => setIsEntering(false), 2000);
+      setTimeout(() => setIsEntering(false), 3000);
     }
   };
 
@@ -190,7 +230,7 @@ function MatchModal({ isVisible, onClose, currentUser }) {
               Welcome, {currentUser?.username}!
             </h3>
             <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
-              Enter the same code as your friend to start a game together.
+              Enter the same code as your friend to start a game with video chat.
             </p>
           </div>
 
@@ -272,7 +312,7 @@ function MatchModal({ isVisible, onClose, currentUser }) {
             <ul style={{ color: '#9ca3af', fontSize: '13px', margin: 0, paddingLeft: '16px' }}>
               <li>You and your friend enter the same code</li>
               <li>First person waits, second person joins</li>
-              <li>Game starts automatically when both enter the code!</li>
+              <li>Game starts automatically with video chat!</li>
               <li>Use any code you want - make it unique to avoid strangers</li>
             </ul>
           </div>
@@ -303,25 +343,39 @@ export default function GameScreen({ currentUser }) {
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
   const [showMatchModal, setShowMatchModal] = useState(false);
   
-  // Video state
+  // Enhanced video state
   const [videoRoomUrl, setVideoRoomUrl] = useState(null);
+  const [videoConnected, setVideoConnected] = useState(false);
+  const [userHasInteracted, setUserHasInteracted] = useState(false);
 
-  // Initialize audio on first user interaction
+  // Initialize audio and handle user interaction
   useEffect(() => {
-    const initializeAudio = () => {
-      audioManager.initialize();
-      document.removeEventListener('click', initializeAudio);
-      document.removeEventListener('keydown', initializeAudio);
+    const initializeAudio = async () => {
+      if (!userHasInteracted) {
+        setUserHasInteracted(true);
+        await audioManager.ensureAudioReady();
+        
+        // Also prepare video service audio
+        if (dailyService) {
+          await dailyService.forceAudioPlay();
+        }
+        
+        document.removeEventListener('click', initializeAudio);
+        document.removeEventListener('touchstart', initializeAudio);
+        document.removeEventListener('keydown', initializeAudio);
+      }
     };
 
     document.addEventListener('click', initializeAudio);
+    document.addEventListener('touchstart', initializeAudio);
     document.addEventListener('keydown', initializeAudio);
 
     return () => {
       document.removeEventListener('click', initializeAudio);
+      document.removeEventListener('touchstart', initializeAudio);
       document.removeEventListener('keydown', initializeAudio);
     };
-  }, []);
+  }, [userHasInteracted]);
 
   // Update display board when game board or player color changes
   useEffect(() => {
@@ -334,11 +388,14 @@ export default function GameScreen({ currentUser }) {
     }
   }, [board, playerColor]);
 
-  // Cleanup video call when component unmounts
+  // Enhanced cleanup on unmount
   useEffect(() => {
     return () => {
       if (videoRoomUrl) {
-        dailyService.leaveCall();
+        console.log('🧹 Component unmounting - cleaning up video');
+        dailyService.leaveCall().catch(err => 
+          console.warn('Video cleanup error:', err)
+        );
       }
     };
   }, []);
@@ -357,7 +414,7 @@ export default function GameScreen({ currentUser }) {
     setTimeout(() => setGameStatusIndicator(null), duration);
   };
 
-  // Socket event handlers
+  // Enhanced socket event handlers
   useEffect(() => {
     // Code matching events
     const handleCodeEntered = (data) => {
@@ -367,8 +424,8 @@ export default function GameScreen({ currentUser }) {
       }
     };
 
-    // Game events
-    const handleMatchFound = (data) => {
+    // Enhanced game events
+    const handleMatchFound = async (data) => {
       console.log('🎮 FRONTEND: Match found:', data);
       setRoomId(data.roomId);
       setPlayerColor(data.color);
@@ -383,20 +440,25 @@ export default function GameScreen({ currentUser }) {
       setWhiteTime(data.gameState.whiteTime);
       setBlackTime(data.gameState.blackTime);
       
-      // Store video room info
-      if (data.videoRoom) {
+      // Enhanced video room handling
+      if (data.videoRoom && data.videoRoom.url) {
+        console.log('🎥 Video room received:', data.videoRoom.url);
         setVideoRoomUrl(data.videoRoom.url);
-        console.log('🎥 Video room URL received:', data.videoRoom.url);
+        
+        // Ensure audio is ready for video
+        await audioManager.ensureAudioReady();
+        
+        showNotification(`Game started with video! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
       } else {
-        console.log('⚠️  No video room provided');
+        console.log('⚠️  No video room provided - playing without video');
         setVideoRoomUrl(null);
+        showNotification(`Game started! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
       }
       
-      showNotification(`Game started! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
       audioManager.playMoveSound();
     };
 
-    const handleMoveMade = (data) => {
+    const handleMoveMade = async (data) => {
       console.log('♟️ FRONTEND: Move made');
       const chess = new Chess(data.fen);
       setGameChess(chess);
@@ -406,6 +468,7 @@ export default function GameScreen({ currentUser }) {
       setBlackTime(data.blackTime);
       setSelectedSquare(null);
       
+      await audioManager.ensureAudioReady();
       audioManager.playMoveSound();
       
       if (chess.isCheck()) {
@@ -449,10 +512,12 @@ export default function GameScreen({ currentUser }) {
       }
       showNotification(message, 'warning');
       
-      // Leave video call after game ends
+      // Leave video call after game ends with delay
       setTimeout(() => {
         if (videoRoomUrl) {
-          dailyService.leaveCall();
+          console.log('🎥 Game ended - leaving video call');
+          dailyService.leaveCall().catch(console.warn);
+          setVideoRoomUrl(null);
         }
       }, 5000); // 5 second delay to see final position
     };
@@ -488,13 +553,16 @@ export default function GameScreen({ currentUser }) {
     };
   }, [videoRoomUrl]);
 
-  // Chess move handling
-  const handleSquarePress = (row, col) => {
+  // Enhanced chess move handling
+  const handleSquarePress = async (row, col) => {
     if (gameStatus !== 'playing') return;
     if (currentTurn !== playerColor && roomId) {
       showNotification("It's not your turn!", 'warning');
       return;
     }
+    
+    // Ensure audio is ready on first interaction
+    await audioManager.ensureAudioReady();
     
     if (selectedSquare) {
       const [fromRow, fromCol] = selectedSquare;
@@ -604,12 +672,14 @@ export default function GameScreen({ currentUser }) {
     setDisplayBoard([]);
     setCurrentTurn('white');
     setSelectedSquare(null);
-    setVideoRoomUrl(null);
+    setVideoConnected(false);
     hideNotification();
     
-    // Leave video call
+    // Leave video call and clear URL
     if (videoRoomUrl) {
-      dailyService.leaveCall();
+      console.log('🎥 Resetting - leaving video call');
+      dailyService.leaveCall().catch(console.warn);
+      setVideoRoomUrl(null);
     }
   };
 
@@ -634,6 +704,13 @@ export default function GameScreen({ currentUser }) {
     }
   };
 
+  // Enhanced video status indicator
+  const getVideoStatus = () => {
+    if (!videoRoomUrl) return null;
+    if (videoConnected) return '🎥';
+    return '📱';
+  };
+
   return (
     <div className="game-screen">
       <NotificationBar notification={notification} onClose={hideNotification} />
@@ -644,13 +721,13 @@ export default function GameScreen({ currentUser }) {
           onClick={() => setShowMatchModal(true)}
           disabled={gameStatus === 'playing'}
         >
-          Find Match
+          Find Match {getVideoStatus()}
         </button>
 
         <div className="title-container">
           <div className="title">ChessChat</div>
           <div className="status">
-            {gameStatus === 'idle' && `Welcome ${currentUser?.username}! Enter a match code to play.`}
+            {gameStatus === 'idle' && `Welcome ${currentUser?.username}! Enter a match code to play with video.`}
             {gameStatus === 'playing' && getCurrentPlayerName()}
             {gameStatus === 'ended' && `${gameWinner} wins!`}
           </div>
@@ -707,12 +784,12 @@ export default function GameScreen({ currentUser }) {
         
         {gameStatus === 'idle' && (
           <button className="control-button start-button" onClick={startLocalGame}>
-            Practice Mode
+            Practice Mode (No Video)
           </button>
         )}
       </div>
 
-      {/* Match Modal */}
+      {/* Enhanced Match Modal */}
       <MatchModal
         isVisible={showMatchModal}
         onClose={() => setShowMatchModal(false)}
