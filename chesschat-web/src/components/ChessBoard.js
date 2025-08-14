@@ -1,89 +1,71 @@
-// src/components/ChessBoard.js - Fallback to Unicode with image test
+// src/components/ChessBoard.js - Final version with all image pieces
 import React from 'react';
 
-// Test with just one image first
-const testImageUrl = '/pieces/white-king.png';
+// Chess piece image mapping
+const pieceImages = {
+  // White pieces
+  'K': '/pieces/white-king.png',
+  'Q': '/pieces/white-queen.png',
+  'R': '/pieces/white-rook.png',
+  'B': '/pieces/white-bishop.png',
+  'N': '/pieces/white-knight.png',
+  'P': '/pieces/white-pawn.png',
+  // Black pieces
+  'k': '/pieces/black-king.png',
+  'q': '/pieces/black-queen.png',
+  'r': '/pieces/black-rook.png',
+  'b': '/pieces/black-bishop.png',
+  'n': '/pieces/black-knight.png',
+  'p': '/pieces/black-pawn.png'
+};
 
-// Fallback to better Unicode symbols
+// Fallback Unicode symbols (in case images fail to load)
 const pieceSymbols = {
-  // White pieces (outline style)
   'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
-  // Black pieces (solid style for better contrast)
   'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
 };
 
 function ChessPiece({ piece }) {
   if (!piece) return null;
   
-  // Test: Only try to load white king as image, rest as Unicode
-  if (piece === 'K') {
-    return (
-      <img 
-        src={testImageUrl}
-        alt="White King"
-        style={{
-          width: '85%',
-          height: '85%',
-          objectFit: 'contain',
-          userSelect: 'none',
-          pointerEvents: 'none'
-        }}
-        onError={(e) => {
-          console.error('Image failed to load, falling back to Unicode');
-          // Replace with Unicode on error
-          e.target.style.display = 'none';
-          e.target.parentNode.innerHTML = '<span class="chess-piece white-piece">♔</span>';
-        }}
-        onLoad={() => {
-          console.log('✅ White king image loaded successfully!');
-        }}
-      />
-    );
-  }
+  const pieceImage = pieceImages[piece];
+  if (!pieceImage) return null;
   
-  // All other pieces use Unicode
   const isWhitePiece = piece === piece.toUpperCase();
   
   return (
-    <span className={`chess-piece ${isWhitePiece ? 'white-piece' : 'black-piece'}`}>
-      {pieceSymbols[piece]}
-    </span>
+    <img 
+      src={pieceImage}
+      alt={`Chess piece ${piece}`}
+      className="chess-piece-image"
+      style={{
+        width: '85%',
+        height: '85%',
+        objectFit: 'contain',
+        userSelect: 'none',
+        pointerEvents: 'none',
+        transition: 'all 0.15s ease'
+      }}
+      onError={(e) => {
+        console.warn(`Failed to load chess piece image: ${pieceImage}, falling back to Unicode`);
+        // Fallback to Unicode if image fails to load
+        e.target.style.display = 'none';
+        const unicodeSpan = document.createElement('span');
+        unicodeSpan.className = `chess-piece ${isWhitePiece ? 'white-piece' : 'black-piece'}`;
+        unicodeSpan.textContent = pieceSymbols[piece];
+        e.target.parentNode.appendChild(unicodeSpan);
+      }}
+      onLoad={() => {
+        // Optional: Log successful image loads for debugging
+        // console.log(`✅ Loaded ${piece} image`);
+      }}
+    />
   );
 }
 
 export default function ChessBoard({ board, selectedSquare, onSquarePress }) {
-  // Add a test component to check if images work at all
-  React.useEffect(() => {
-    console.log('🧪 Testing image loading...');
-    const testImg = new Image();
-    testImg.onload = () => console.log('✅ Test image loaded successfully');
-    testImg.onerror = () => console.error('❌ Test image failed to load');
-    testImg.src = testImageUrl;
-  }, []);
-
   return (
     <div className="chess-board">
-      {/* Add a visible test image at the top */}
-      <div style={{
-        position: 'absolute',
-        top: '-50px',
-        left: '0',
-        background: 'white',
-        padding: '5px',
-        borderRadius: '4px',
-        fontSize: '12px',
-        color: 'black'
-      }}>
-        Test Image: 
-        <img 
-          src={testImageUrl} 
-          alt="test" 
-          style={{width: '20px', height: '20px', marginLeft: '5px'}}
-          onLoad={() => console.log('✅ Visible test image loaded')}
-          onError={() => console.log('❌ Visible test image failed')}
-        />
-      </div>
-      
       {board.map((row, rowIndex) =>
         row.map((piece, colIndex) => {
           const isLight = (rowIndex + colIndex) % 2 === 0;
