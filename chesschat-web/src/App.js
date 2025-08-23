@@ -78,7 +78,7 @@ function App() {
     return () => {
       socketService.disconnect();
     };
-  }, [gameState]);
+  }, []); // Fixed: empty dependency array to prevent disconnects on state changes
 
   const handleJoinRoom = (displayName, roomCode) => {
     setError('');
