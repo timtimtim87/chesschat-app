@@ -1,4 +1,4 @@
-// src/components/GameScreen.js - Complete enhanced video integration
+// src/components/GameScreen.js - Simplified for direct game play
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
@@ -122,7 +122,7 @@ function flipBoard(board) {
 function NotificationBar({ notification, onClose }) {
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(onClose, 5000); // Increased to 5 seconds
+      const timer = setTimeout(onClose, 5000);
       return () => clearTimeout(timer);
     }
   }, [notification, onClose]);
@@ -160,178 +160,16 @@ function GameStatusIndicator({ status }) {
   );
 }
 
-// Enhanced Match Code Modal
-function MatchModal({ isVisible, onClose, currentUser }) {
-  const [matchCode, setMatchCode] = useState('');
-  const [isEntering, setIsEntering] = useState(false);
-  const [waitingMessage, setWaitingMessage] = useState('');
-
-  const handleEnterCode = (e) => {
-    e.preventDefault();
-    if (matchCode.trim().length >= 3) {
-      console.log('🔑 FRONTEND: Entering match code:', matchCode.trim());
-      
-      setIsEntering(true);
-      socketService.enterMatchCode(matchCode.trim());
-      setTimeout(() => setIsEntering(false), 3000);
-    }
-  };
-
-  const generateRandomCode = () => {
-    const adjectives = ['Quick', 'Smart', 'Cool', 'Fast', 'Epic', 'Super', 'Mega', 'Ultra'];
-    const nouns = ['Game', 'Match', 'Battle', 'Duel', 'Fight', 'Chess', 'Play', 'Room'];
-    const numbers = Math.floor(Math.random() * 1000);
-    
-    const randomCode = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${numbers}`;
-    setMatchCode(randomCode);
-  };
-
-  // Reset form when modal opens/closes
-  useEffect(() => {
-    if (isVisible) {
-      setMatchCode('');
-      setWaitingMessage('');
-    }
-  }, [isVisible]);
-
-  // Listen for code entered responses
-  useEffect(() => {
-    const handleCodeEntered = (data) => {
-      if (data.waiting) {
-        setWaitingMessage(data.message);
-      }
-    };
-
-    socketService.on('code-entered', handleCodeEntered);
-    return () => socketService.off('code-entered', handleCodeEntered);
-  }, []);
-
-  if (!isVisible) return null;
-
-  return (
-    <div className="friends-overlay">
-      <div className="friends-panel">
-        <div className="friends-header">
-          <h2 className="friends-title">Find a Match</h2>
-          <button onClick={onClose} className="close-button">×</button>
-        </div>
-
-        <div className="friends-content">
-          {/* Welcome message */}
-          <div style={{ 
-            background: 'rgba(139, 92, 246, 0.1)', 
-            border: '1px solid rgba(139, 92, 246, 0.2)',
-            borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '24px',
-            textAlign: 'center'
-          }}>
-            <h3 style={{ color: '#a78bfa', margin: '0 0 8px 0', fontSize: '16px' }}>
-              Welcome, {currentUser?.username}!
-            </h3>
-            <p style={{ color: '#9ca3af', fontSize: '14px', margin: 0 }}>
-              Enter the same code as your friend to start a game with video chat.
-            </p>
-          </div>
-
-          {/* Single form for entering code */}
-          <div className="add-friend-section">
-            <h3 className="section-title">Enter Match Code</h3>
-            <p style={{ color: '#9ca3af', fontSize: '14px', marginBottom: '16px' }}>
-              Both you and your friend enter the same code to match
-            </p>
-            
-            <form onSubmit={handleEnterCode} className="add-friend-form">
-              <input
-                type="text"
-                value={matchCode}
-                onChange={(e) => setMatchCode(e.target.value)}
-                placeholder="Enter any code (e.g., chess123)"
-                className="friend-input"
-                minLength={3}
-                maxLength={20}
-                disabled={isEntering}
-                style={{ fontSize: '16px' }}
-              />
-              <button
-                type="submit"
-                className="add-friend-button"
-                disabled={isEntering || matchCode.trim().length < 3}
-                style={{ minWidth: '120px' }}
-              >
-                {isEntering ? 'Matching...' : '🎮 Find Match'}
-              </button>
-            </form>
-
-            <div style={{ textAlign: 'center', margin: '16px 0' }}>
-              <button
-                onClick={generateRandomCode}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  color: 'white',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  transition: 'all 0.2s'
-                }}
-              >
-                🎲 Generate Random Code
-              </button>
-            </div>
-
-            {/* Waiting message */}
-            {waitingMessage && (
-              <div style={{
-                background: 'rgba(245, 158, 11, 0.1)',
-                border: '1px solid rgba(245, 158, 11, 0.2)',
-                borderRadius: '8px',
-                padding: '12px',
-                marginTop: '16px',
-                textAlign: 'center'
-              }}>
-                <p style={{ color: '#f59e0b', margin: 0, fontSize: '14px' }}>
-                  {waitingMessage}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Instructions */}
-          <div style={{ 
-            background: 'rgba(59, 130, 246, 0.1)', 
-            border: '1px solid rgba(59, 130, 246, 0.2)',
-            borderRadius: '8px',
-            padding: '16px',
-            marginTop: '20px'
-          }}>
-            <h4 style={{ color: '#60a5fa', margin: '0 0 8px 0', fontSize: '14px' }}>
-              How it works:
-            </h4>
-            <ul style={{ color: '#9ca3af', fontSize: '13px', margin: 0, paddingLeft: '16px' }}>
-              <li>You and your friend enter the same code</li>
-              <li>First person waits, second person joins</li>
-              <li>Game starts automatically with video chat!</li>
-              <li>Use any code you want - make it unique to avoid strangers</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function GameScreen({ currentUser }) {
+export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
   const [board, setBoard] = useState([]);
   const [displayBoard, setDisplayBoard] = useState([]);
   const [selectedSquare, setSelectedSquare] = useState(null);
-  const [gameStatus, setGameStatus] = useState('idle');
+  const [gameStatus, setGameStatus] = useState('playing');
   const [whiteTime, setWhiteTime] = useState(10 * 60);
   const [blackTime, setBlackTime] = useState(10 * 60);
   const [gameWinner, setGameWinner] = useState(null);
   
-  // Multiplayer state
+  // Game state from props
   const [playerColor, setPlayerColor] = useState(null);
   const [currentTurn, setCurrentTurn] = useState('white');
   const [roomId, setRoomId] = useState(null);
@@ -341,12 +179,42 @@ export default function GameScreen({ currentUser }) {
   // UI state
   const [notification, setNotification] = useState(null);
   const [gameStatusIndicator, setGameStatusIndicator] = useState(null);
-  const [showMatchModal, setShowMatchModal] = useState(false);
   
-  // Enhanced video state
+  // Video state
   const [videoRoomUrl, setVideoRoomUrl] = useState(null);
   const [videoConnected, setVideoConnected] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
+
+  // Initialize game from gameData prop
+  useEffect(() => {
+    if (gameData) {
+      console.log('🎮 Initializing game from data:', gameData);
+      
+      setRoomId(gameData.roomId);
+      setPlayerColor(gameData.color);
+      setOpponent(gameData.opponent);
+      
+      const chess = new Chess(gameData.gameState.fen);
+      setGameChess(chess);
+      setBoard(fenToBoard(gameData.gameState.fen));
+      setCurrentTurn(gameData.gameState.currentTurn);
+      setWhiteTime(gameData.gameState.whiteTime);
+      setBlackTime(gameData.gameState.blackTime);
+      
+      // Set up video room
+      if (gameData.videoRoom && gameData.videoRoom.url) {
+        console.log('🎥 Video room available:', gameData.videoRoom.url);
+        setVideoRoomUrl(gameData.videoRoom.url);
+        showNotification(`Game started with video! Playing as ${gameData.color}`, 'success');
+      } else {
+        console.log('⚠️  No video room - playing without video');
+        setVideoRoomUrl(null);
+        showNotification(`Game started! Playing as ${gameData.color}`, 'success');
+      }
+      
+      audioManager.playMoveSound();
+    }
+  }, [gameData]);
 
   // Initialize audio and handle user interaction
   useEffect(() => {
@@ -355,7 +223,6 @@ export default function GameScreen({ currentUser }) {
         setUserHasInteracted(true);
         await audioManager.ensureAudioReady();
         
-        // Also prepare video service audio
         if (dailyService) {
           await dailyService.forceAudioPlay();
         }
@@ -414,52 +281,10 @@ export default function GameScreen({ currentUser }) {
     setTimeout(() => setGameStatusIndicator(null), duration);
   };
 
-  // Enhanced socket event handlers
+  // Game event handlers
   useEffect(() => {
-    // Code matching events
-    const handleCodeEntered = (data) => {
-      console.log('🔑 FRONTEND: Code entered response:', data);
-      if (data.waiting) {
-        showNotification(data.message, 'info');
-      }
-    };
-
-    // Enhanced game events
-    const handleMatchFound = async (data) => {
-      console.log('🎮 FRONTEND: Match found:', data);
-      setRoomId(data.roomId);
-      setPlayerColor(data.color);
-      setOpponent(data.opponent);
-      setGameStatus('playing');
-      setShowMatchModal(false);
-      
-      const chess = new Chess(data.gameState.fen);
-      setGameChess(chess);
-      setBoard(fenToBoard(data.gameState.fen));
-      setCurrentTurn(data.gameState.currentTurn);
-      setWhiteTime(data.gameState.whiteTime);
-      setBlackTime(data.gameState.blackTime);
-      
-      // Enhanced video room handling
-      if (data.videoRoom && data.videoRoom.url) {
-        console.log('🎥 Video room received:', data.videoRoom.url);
-        setVideoRoomUrl(data.videoRoom.url);
-        
-        // Ensure audio is ready for video
-        await audioManager.ensureAudioReady();
-        
-        showNotification(`Game started with video! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
-      } else {
-        console.log('⚠️  No video room provided - playing without video');
-        setVideoRoomUrl(null);
-        showNotification(`Game started! Playing as ${data.color} vs ${data.opponent.username}`, 'success');
-      }
-      
-      audioManager.playMoveSound();
-    };
-
     const handleMoveMade = async (data) => {
-      console.log('♟️ FRONTEND: Move made');
+      console.log('♟️ Move made');
       const chess = new Chess(data.fen);
       setGameChess(chess);
       setBoard(fenToBoard(data.fen));
@@ -512,14 +337,14 @@ export default function GameScreen({ currentUser }) {
       }
       showNotification(message, 'warning');
       
-      // Leave video call after game ends with delay
+      // Leave video call after game ends
       setTimeout(() => {
         if (videoRoomUrl) {
           console.log('🎥 Game ended - leaving video call');
           dailyService.leaveCall().catch(console.warn);
           setVideoRoomUrl(null);
         }
-      }, 5000); // 5 second delay to see final position
+      }, 5000);
     };
 
     const handleTimeUpdate = (data) => {
@@ -528,13 +353,11 @@ export default function GameScreen({ currentUser }) {
     };
 
     const handleError = (data) => {
-      console.log('❌ FRONTEND: Error:', data);
+      console.log('❌ Game error:', data);
       showNotification(`Error: ${data.message}`, 'error');
     };
 
     // Add event listeners
-    socketService.on('code-entered', handleCodeEntered);
-    socketService.on('match-found', handleMatchFound);
     socketService.on('move-made', handleMoveMade);
     socketService.on('invalid-move', handleInvalidMove);
     socketService.on('game-ended', handleGameEnded);
@@ -542,9 +365,6 @@ export default function GameScreen({ currentUser }) {
     socketService.on('error', handleError);
 
     return () => {
-      // Cleanup event listeners
-      socketService.off('code-entered', handleCodeEntered);
-      socketService.off('match-found', handleMatchFound);
       socketService.off('move-made', handleMoveMade);
       socketService.off('invalid-move', handleInvalidMove);
       socketService.off('game-ended', handleGameEnded);
@@ -553,15 +373,14 @@ export default function GameScreen({ currentUser }) {
     };
   }, [videoRoomUrl]);
 
-  // Enhanced chess move handling
+  // Chess move handling
   const handleSquarePress = async (row, col) => {
     if (gameStatus !== 'playing') return;
-    if (currentTurn !== playerColor && roomId) {
+    if (currentTurn !== playerColor) {
       showNotification("It's not your turn!", 'warning');
       return;
     }
     
-    // Ensure audio is ready on first interaction
     await audioManager.ensureAudioReady();
     
     if (selectedSquare) {
@@ -583,30 +402,11 @@ export default function GameScreen({ currentUser }) {
         });
         
         if (move) {
-          if (roomId) {
-            socketService.makeMove(roomId, {
-              from: fromSquare,
-              to: toSquare,
-              promotion: 'q'
-            }, playerColor);
-          } else {
-            // Local game
-            setGameChess(testChess);
-            setBoard(fenToBoard(testChess.fen()));
-            setCurrentTurn(testChess.turn() === 'w' ? 'white' : 'black');
-            setSelectedSquare(null);
-            audioManager.playMoveSound();
-            
-            if (testChess.isCheck()) {
-              if (testChess.isCheckmate()) {
-                showGameStatus('CHECKMATE!', 'checkmate', 3000);
-                setGameStatus('ended');
-                setGameWinner(testChess.turn() === 'w' ? 'black' : 'white');
-              } else {
-                showGameStatus('CHECK!', 'check', 2000);
-              }
-            }
-          }
+          socketService.makeMove(roomId, {
+            from: fromSquare,
+            to: toSquare,
+            promotion: 'q'
+          }, playerColor);
         } else {
           showNotification('Invalid move!', 'error');
           setSelectedSquare(null);
@@ -619,9 +419,8 @@ export default function GameScreen({ currentUser }) {
       const piece = displayBoard[row] && displayBoard[row][col];
       if (piece) {
         const isWhitePiece = piece === piece.toUpperCase();
-        const isPlayersPiece = !roomId || 
-          (playerColor === 'white' && isWhitePiece) || 
-          (playerColor === 'black' && !isWhitePiece);
+        const isPlayersPiece = (playerColor === 'white' && isWhitePiece) || 
+                              (playerColor === 'black' && !isWhitePiece);
         
         if (isPlayersPiece) {
           setSelectedSquare([row, col]);
@@ -632,79 +431,29 @@ export default function GameScreen({ currentUser }) {
     }
   };
 
-  const startLocalGame = () => {
-    const chess = new Chess();
-    setGameChess(chess);
-    const initialBoard = fenToBoard(chess.fen());
-    setBoard(initialBoard);
-    setDisplayBoard(initialBoard);
-    setGameStatus('playing');
-    setCurrentTurn('white');
-    setPlayerColor('white');
-    setWhiteTime(10 * 60);
-    setBlackTime(10 * 60);
-    setGameWinner(null);
-    setRoomId(null);
-    setOpponent(null);
-    setVideoRoomUrl(null);
-    showNotification('Practice game started', 'info');
-  };
-
   const resignGame = () => {
     if (window.confirm("Are you sure you want to resign?")) {
-      if (roomId && playerColor) {
-        socketService.resign(roomId, playerColor);
-      } else {
-        setGameWinner(playerColor === 'white' ? 'black' : 'white');
-        setGameStatus('ended');
-        showNotification('You resigned', 'info');
-      }
-    }
-  };
-
-  const resetToIdle = () => {
-    setGameStatus('idle');
-    setGameWinner(null);
-    setRoomId(null);
-    setOpponent(null);
-    setPlayerColor(null);
-    setBoard([]);
-    setDisplayBoard([]);
-    setCurrentTurn('white');
-    setSelectedSquare(null);
-    setVideoConnected(false);
-    hideNotification();
-    
-    // Leave video call and clear URL
-    if (videoRoomUrl) {
-      console.log('🎥 Resetting - leaving video call');
-      dailyService.leaveCall().catch(console.warn);
-      setVideoRoomUrl(null);
+      socketService.resign(roomId, playerColor);
     }
   };
 
   // Get display names for players
   const getPlayerName = (color) => {
-    if (!opponent) return color === 'white' ? 'White' : 'Black';
-    
     if (playerColor === color) {
       return 'You';
     } else {
-      return opponent.username || 'Opponent';
+      return opponent?.username || 'Opponent';
     }
   };
 
   const getCurrentPlayerName = () => {
-    if (!opponent) return currentTurn;
-    
     if (currentTurn === playerColor) {
       return 'Your turn';
     } else {
-      return `${opponent.username || 'Opponent'}'s turn`;
+      return `${opponent?.username || 'Opponent'}'s turn`;
     }
   };
 
-  // Enhanced video status indicator
   const getVideoStatus = () => {
     if (!videoRoomUrl) return null;
     if (videoConnected) return '🎥';
@@ -717,31 +466,27 @@ export default function GameScreen({ currentUser }) {
       
       <div className="header">
         <button 
-          className={`header-button start-match-button ${gameStatus === 'playing' ? 'disabled-button' : ''}`}
-          onClick={() => setShowMatchModal(true)}
-          disabled={gameStatus === 'playing'}
+          className="header-button start-match-button"
+          onClick={onBackToSplash}
         >
-          Find Match {getVideoStatus()}
+          ← New Game
         </button>
 
         <div className="title-container">
-          <div className="title">ChessChat</div>
+          <div className="title">ChessChat {getVideoStatus()}</div>
           <div className="status">
-            {gameStatus === 'idle' && `Welcome ${currentUser?.username}! Enter a match code to play with video.`}
             {gameStatus === 'playing' && getCurrentPlayerName()}
             {gameStatus === 'ended' && `${gameWinner} wins!`}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button 
-            className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
-            onClick={resignGame}
-            disabled={gameStatus !== 'playing'}
-          >
-            Resign
-          </button>
-        </div>
+        <button 
+          className={`header-button resign-button ${gameStatus !== 'playing' ? 'disabled-button' : ''}`}
+          onClick={resignGame}
+          disabled={gameStatus !== 'playing'}
+        >
+          Resign
+        </button>
       </div>
 
       <div className="game-main">
@@ -777,24 +522,11 @@ export default function GameScreen({ currentUser }) {
 
       <div className="controls">
         {gameStatus === 'ended' && (
-          <button className="control-button new-game-button" onClick={resetToIdle}>
+          <button className="control-button new-game-button" onClick={onBackToSplash}>
             New Game
           </button>
         )}
-        
-        {gameStatus === 'idle' && (
-          <button className="control-button start-button" onClick={startLocalGame}>
-            Practice Mode (No Video)
-          </button>
-        )}
       </div>
-
-      {/* Enhanced Match Modal */}
-      <MatchModal
-        isVisible={showMatchModal}
-        onClose={() => setShowMatchModal(false)}
-        currentUser={currentUser}
-      />
     </div>
   );
 }

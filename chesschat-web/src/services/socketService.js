@@ -1,4 +1,4 @@
-// src/services/socketService.js - Simplified with code matching
+// src/services/socketService.js - Simplified direct room joining
 import io from 'socket.io-client';
 
 class SocketService {
@@ -6,7 +6,6 @@ class SocketService {
     this.socket = null;
     this.isConnected = false;
     this.eventHandlers = {};
-    this.currentUser = null;
   }
 
   connect(serverUrl = null) {
@@ -70,28 +69,10 @@ class SocketService {
       console.error('❌ Reconnection error:', error);
     });
 
-    // User system events
-    this.socket.on('registration-success', (data) => {
-      console.log('✅ User registered:', data);
-      this.currentUser = data;
-      this.notifyHandlers('registration-success', data);
-    });
-
-    this.socket.on('registration-error', (data) => {
-      console.log('❌ Registration error:', data);
-      this.notifyHandlers('registration-error', data);
-    });
-
-    // Code matching events
+    // Room joining events
     this.socket.on('code-entered', (data) => {
       console.log('🔑 Code entered response:', data);
       this.notifyHandlers('code-entered', data);
-    });
-
-    // Online users
-    this.socket.on('online-users-list', (data) => {
-      console.log('👥 Online users:', data);
-      this.notifyHandlers('online-users-list', data);
     });
 
     // Game events
@@ -156,31 +137,16 @@ class SocketService {
     }
   }
 
-  // User system methods
-  registerUser(username, displayName) {
+  // Simplified room joining - combines user creation and room joining
+  enterMatchCode(code, displayName = null) {
     if (this.socket && this.isConnected) {
-      this.socket.emit('register-user', { username, displayName });
-    } else {
-      console.error('❌ Socket not connected');
-    }
-  }
-
-  getCurrentUser() {
-    return this.currentUser;
-  }
-
-  // Simplified matching system - just enter a code
-  enterMatchCode(code) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('enter-match-code', { code });
+      console.log('🔑 Entering match code:', code, 'with name:', displayName);
+      this.socket.emit('enter-match-code', { 
+        code,
+        displayName: displayName || `Player_${Math.random().toString(36).substr(2, 4)}`
+      });
     } else {
       console.error('❌ Socket not connected - cannot enter match code');
-    }
-  }
-
-  getOnlineUsers() {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('get-online-users');
     }
   }
 
@@ -211,28 +177,17 @@ class SocketService {
     }
   }
 
-  getUserStats(username = null) {
-    if (this.socket && this.isConnected) {
-      this.socket.emit('get-user-stats', { username });
-    }
-  }
-
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
-      this.currentUser = null;
       this.eventHandlers = {};
     }
   }
 
   isSocketConnected() {
     return this.socket && this.isConnected;
-  }
-
-  isUserRegistered() {
-    return this.currentUser !== null;
   }
 
   // Connection status

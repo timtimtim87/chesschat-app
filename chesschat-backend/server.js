@@ -1,4 +1,4 @@
-// server.js - Complete working version with video room creation
+// server.js - Simplified for direct room joining without user registration
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -81,25 +81,12 @@ async function initializeDatabase() {
   }
 }
 
-// In-memory storage for active gameplay
+// Simplified in-memory storage for active gameplay
 const gameRooms = new Map();
-const connectedUsers = new Map(); // socketId -> user data
-const userSockets = new Map(); // username -> socketId
 const matchingCodes = new Map(); // code -> [user1, user2, ...]
+const activeConnections = new Map(); // socketId -> user data
 
 // Helper functions
-function getUserBySocket(socketId) {
-  return connectedUsers.get(socketId);
-}
-
-function getUserSocket(username) {
-  return userSockets.get(username);
-}
-
-function isUserOnline(username) {
-  return userSockets.has(username);
-}
-
 function createGameRoom(player1, player2) {
   const roomId = `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
@@ -117,16 +104,16 @@ function createGameRoom(player1, player2) {
     createdAt: new Date(),
     lastMove: null,
     moveCount: 0,
-    videoRoom: null // Will be populated with Daily.co room info
+    videoRoom: null
   };
   
   gameRooms.set(roomId, gameRoom);
   return gameRoom;
 }
 
-// Helper function to start game between two users with proper video creation
+// Enhanced function to start game between two users with video
 async function startGameBetweenUsers(user1, user2) {
-  console.log(`🎮 Starting game between ${user1.username} and ${user2.username}`);
+  console.log(`🎮 Starting game between ${user1.displayName} and ${user2.displayName}`);
   
   // Create game room
   const gameRoom = createGameRoom(user1, user2);
@@ -147,20 +134,19 @@ async function startGameBetweenUsers(user1, user2) {
     gameRoom.players.white = user1Color === 'white' ? user1 : user2;
     gameRoom.players.black = user1Color === 'black' ? user1 : user2;
     
-    // Create video room - Fixed with proper async handling
+    // Create video room
     console.log('🎥 Attempting to create video room...');
-    console.log('🎥 Video service configured:', videoService.isConfigured());
     
     let videoRoom = null;
     if (videoService.isConfigured()) {
       try {
         videoRoom = await videoService.createGameRoom(
           gameRoom.id, 
-          [user1.username, user2.username]
+          [user1.displayName, user2.displayName]
         );
         
         if (videoRoom) {
-          console.log(`✅ Video room created successfully: ${videoRoom.url}`);
+          console.log(`✅ Video room created: ${videoRoom.url}`);
           gameRoom.videoRoom = videoRoom;
         } else {
           console.warn('⚠️  Video room creation returned null');
@@ -171,11 +157,11 @@ async function startGameBetweenUsers(user1, user2) {
         gameRoom.videoRoom = null;
       }
     } else {
-      console.log('⚠️  Video service not configured, skipping video room creation');
+      console.log('⚠️  Video service not configured');
       gameRoom.videoRoom = null;
     }
     
-    // Prepare game data for both players
+    // Prepare game data
     const gameStateData = {
       roomId: gameRoom.id,
       gameState: {
@@ -184,29 +170,31 @@ async function startGameBetweenUsers(user1, user2) {
         blackTime: gameRoom.blackTime,
         currentTurn: gameRoom.currentTurn
       },
-      videoRoom: gameRoom.videoRoom // Include video room info
+      videoRoom: gameRoom.videoRoom
     };
     
-    console.log('📤 Sending match-found event with video room:', gameRoom.videoRoom ? 'YES' : 'NO');
-    if (gameRoom.videoRoom) {
-      console.log('🔗 Video URL:', gameRoom.videoRoom.url);
-    }
+    console.log('📤 Sending match-found event');
     
     // Notify both players
     socket1.emit('match-found', {
       ...gameStateData,
       color: user1Color,
-      opponent: user2
+      opponent: { 
+        username: user2.displayName, 
+        displayName: user2.displayName 
+      }
     });
     
     socket2.emit('match-found', {
       ...gameStateData,
       color: user2Color,
-      opponent: user1
+      opponent: { 
+        username: user1.displayName, 
+        displayName: user1.displayName 
+      }
     });
     
-    console.log(`🎮 Game started: ${user1.username} (${user1Color}) vs ${user2.username} (${user2Color})`);
-    console.log(`🎥 Video room: ${gameRoom.videoRoom ? gameRoom.videoRoom.url : 'disabled'}`);
+    console.log(`🎮 Game started: ${user1.displayName} (${user1Color}) vs ${user2.displayName} (${user2Color})`);
     startGameTimer(gameRoom.id);
   }
 }
@@ -215,70 +203,34 @@ async function startGameBetweenUsers(user1, user2) {
 io.on('connection', (socket) => {
   console.log(`🔌 User connected: ${socket.id}`);
 
-  // User registration
-  socket.on('register-user', async (userData) => {
-    const { username, displayName } = userData;
-    
-    try {
-      // Check if username is already taken by online user
-      if (userSockets.has(username)) {
-        socket.emit('registration-error', { 
-          message: 'Username is already taken by an online user' 
-        });
-        return;
-      }
-
-      // Validate username
-      if (!username || username.length < 3 || username.length > 20) {
-        socket.emit('registration-error', { 
-          message: 'Username must be 3-20 characters long' 
-        });
-        return;
-      }
-
-      // Create session user object
-      const user = {
-        socketId: socket.id,
-        username: username,
-        displayName: displayName || username,
-        connectedAt: new Date(),
-        status: 'online'
-      };
-
-      connectedUsers.set(socket.id, user);
-      userSockets.set(username, socket.id);
-
-      socket.emit('registration-success', {
-        username: user.username,
-        displayName: user.displayName
-      });
-
-      console.log(`👤 User registered: ${username} (Total online: ${userSockets.size})`);
-    } catch (error) {
-      console.error('Registration error:', error);
-      socket.emit('registration-error', { 
-        message: 'Failed to register user. Please try again.' 
-      });
-    }
-  });
-
-  // Enhanced matching system with better logging
+  // Simplified room joining - combines user creation and matching
   socket.on('enter-match-code', async (data) => {
-    const user = getUserBySocket(socket.id);
-    if (!user) {
-      socket.emit('error', { message: 'User not found' });
-      return;
-    }
-
-    const { code } = data;
+    const { code, displayName = `Player_${Math.random().toString(36).substr(2, 4)}` } = data;
     
-    console.log(`🔑 User ${user.username} entering code: ${code}`);
+    console.log(`🔑 User ${displayName} entering code: ${code}`);
     
-    // Validate code
+    // Validate inputs
     if (!code || code.length < 3 || code.length > 20) {
       socket.emit('error', { message: 'Code must be 3-20 characters long' });
       return;
     }
+
+    if (!displayName || displayName.length < 2 || displayName.length > 30) {
+      socket.emit('error', { message: 'Display name must be 2-30 characters long' });
+      return;
+    }
+
+    // Create user object
+    const user = {
+      socketId: socket.id,
+      displayName: displayName.trim(),
+      username: displayName.trim(), // Use display name as username for simplicity
+      connectedAt: new Date(),
+      status: 'waiting'
+    };
+
+    // Store active connection
+    activeConnections.set(socket.id, user);
 
     // Get or create code entry
     if (!matchingCodes.has(code)) {
@@ -287,11 +239,13 @@ io.on('connection', (socket) => {
     
     const waitingUsers = matchingCodes.get(code);
     
-    // Check if user already in this code
-    if (waitingUsers.some(u => u.username === user.username)) {
+    // Check if user already in this code (shouldn't happen with new flow, but safety check)
+    const existingUserIndex = waitingUsers.findIndex(u => u.displayName === user.displayName);
+    if (existingUserIndex !== -1) {
+      waitingUsers[existingUserIndex] = user; // Update with new socket
       socket.emit('code-entered', { 
         code: code,
-        message: `You're already waiting for someone to enter code "${code}"`,
+        message: `You're back in the queue for "${code}"`,
         waiting: true
       });
       return;
@@ -307,16 +261,16 @@ io.on('connection', (socket) => {
         message: `Waiting for someone to enter code "${code}"`,
         waiting: true
       });
-      console.log(`⏳ ${user.username} waiting for match with code: ${code}`);
+      console.log(`⏳ ${user.displayName} waiting for match with code: ${code}`);
       
     } else if (waitingUsers.length >= 2) {
       // Match found! Start game between first two users
       const player1 = waitingUsers[0];
       const player2 = waitingUsers[1];
       
-      console.log(`🎮 MATCH FOUND! ${player1.username} vs ${player2.username} (code: ${code})`);
+      console.log(`🎮 MATCH FOUND! ${player1.displayName} vs ${player2.displayName} (code: ${code})`);
       
-      // Start the game with video room creation
+      // Start the game
       await startGameBetweenUsers(player1, player2);
       
       // Clean up - remove these two users from the code
@@ -327,18 +281,6 @@ io.on('connection', (socket) => {
         matchingCodes.delete(code);
       }
     }
-  });
-
-  // Get online users
-  socket.on('get-online-users', () => {
-    const user = getUserBySocket(socket.id);
-    if (!user) {
-      socket.emit('online-users-list', { users: [] });
-      return;
-    }
-
-    const onlineUsers = Array.from(userSockets.keys()).filter(username => username !== user.username);
-    socket.emit('online-users-list', { users: onlineUsers });
   });
 
   // Game move handling
@@ -412,7 +354,7 @@ io.on('connection', (socket) => {
           if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
             setTimeout(() => {
               videoService.deleteGameRoom(gameRoom.videoRoom.name);
-            }, 30000); // 30 second delay
+            }, 30000);
           }
         }
         
@@ -456,7 +398,7 @@ io.on('connection', (socket) => {
     if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
       setTimeout(() => {
         videoService.deleteGameRoom(gameRoom.videoRoom.name);
-      }, 10000); // 10 second delay
+      }, 10000);
     }
   });
 
@@ -464,19 +406,18 @@ io.on('connection', (socket) => {
   socket.on('disconnect', async () => {
     console.log(`💔 User disconnected: ${socket.id}`);
     
-    const user = getUserBySocket(socket.id);
+    const user = activeConnections.get(socket.id);
     
     if (user) {
-      // Remove from user mappings
-      userSockets.delete(user.username);
-      connectedUsers.delete(socket.id);
+      // Remove from active connections
+      activeConnections.delete(socket.id);
       
       // Clean up matching codes
       for (const [code, users] of matchingCodes.entries()) {
-        const userIndex = users.findIndex(u => u.username === user.username);
+        const userIndex = users.findIndex(u => u.socketId === socket.id);
         if (userIndex !== -1) {
           users.splice(userIndex, 1);
-          console.log(`🧹 Removed ${user.username} from code: ${code}`);
+          console.log(`🧹 Removed ${user.displayName} from code: ${code}`);
           
           if (users.length === 0) {
             matchingCodes.delete(code);
@@ -484,14 +425,14 @@ io.on('connection', (socket) => {
         }
       }
       
-      console.log(`👋 User ${user.username} went offline`);
+      console.log(`👋 User ${user.displayName} disconnected`);
     }
   });
 
   socket.on('get-stats', () => {
     socket.emit('stats', {
       activeGames: gameRooms.size,
-      connectedUsers: connectedUsers.size,
+      activeConnections: activeConnections.size,
       matchingCodes: matchingCodes.size,
       videoService: videoService.getStatus()
     });
@@ -564,12 +505,10 @@ function stopGameTimer(roomId) {
 // Enhanced health check endpoint
 app.get('/health', async (req, res) => {
   let dbStatus = 'not configured';
-  let dbUsers = 0;
   
   if (db) {
     try {
-      const result = await db.pool.query('SELECT COUNT(*) as user_count FROM users');
-      dbUsers = parseInt(result.rows[0].user_count);
+      const result = await db.pool.query('SELECT 1');
       dbStatus = 'healthy';
     } catch (error) {
       console.error('Database health check failed:', error);
@@ -577,16 +516,12 @@ app.get('/health', async (req, res) => {
     }
   }
 
-  const onlineUsers = Array.from(userSockets.keys());
-
   res.json({
     status: 'healthy',
     database: dbStatus,
     activeGames: gameRooms.size,
-    connectedUsers: connectedUsers.size,
+    activeConnections: activeConnections.size,
     matchingCodes: matchingCodes.size,
-    totalUsers: dbUsers,
-    onlineUsers: onlineUsers,
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
     video: {
@@ -597,17 +532,7 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// Debug endpoint to see online users
-app.get('/online-users', (req, res) => {
-  const onlineUsers = Array.from(userSockets.keys());
-  res.json({
-    count: onlineUsers.length,
-    users: onlineUsers,
-    socketMappings: Object.fromEntries(userSockets)
-  });
-});
-
-// Video service endpoints for debugging
+// Video service endpoints
 app.get('/video/status', (req, res) => {
   res.json({
     ...videoService.getStatus(),
@@ -616,10 +541,7 @@ app.get('/video/status', (req, res) => {
   });
 });
 
-// Test video room creation
 app.get('/video/test', async (req, res) => {
-  console.log('🧪 Video test endpoint called');
-  
   if (!videoService.isConfigured()) {
     return res.json({
       success: false,
@@ -629,7 +551,6 @@ app.get('/video/test', async (req, res) => {
     });
   }
 
-  // First test API connection
   try {
     const connectionTest = await videoService.testApiConnection();
     if (!connectionTest.success) {
@@ -640,16 +561,10 @@ app.get('/video/test', async (req, res) => {
       });
     }
 
-    // Then test room creation
-    console.log('🎬 Creating test room...');
     const testRoom = await videoService.createGameRoom('test-' + Date.now(), ['TestUser1', 'TestUser2']);
     
     if (testRoom) {
-      console.log('✅ Test room created successfully:', testRoom.name);
-      
-      // Clean up test room after 30 seconds
       setTimeout(() => {
-        console.log('🧹 Cleaning up test room...');
         videoService.deleteGameRoom(testRoom.name);
       }, 30000);
       
@@ -662,25 +577,12 @@ app.get('/video/test', async (req, res) => {
     } else {
       res.json({
         success: false,
-        error: 'Failed to create test room - createGameRoom returned null',
+        error: 'Failed to create test room',
         connectionTest: connectionTest
       });
     }
   } catch (error) {
     console.error('❌ Test room creation error:', error);
-    res.json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// Test API connection only
-app.get('/video/test-api', async (req, res) => {
-  try {
-    const result = await videoService.testApiConnection();
-    res.json(result);
-  } catch (error) {
     res.json({
       success: false,
       error: error.message
@@ -725,8 +627,7 @@ async function startServer() {
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
     console.log(`💾 Database: ${db ? 'PostgreSQL connected' : 'Memory-only mode'}`);
     console.log(`🎥 Video service: ${videoService.isConfigured() ? 'Daily.co configured' : 'Video disabled'}`);
-    console.log(`🎥 Video test: http://localhost:${PORT}/video/test`);
-    console.log(`⚡ Game engine: Code matching system`);
+    console.log(`⚡ Game engine: Simplified room matching`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
