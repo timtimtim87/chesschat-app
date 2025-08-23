@@ -51,6 +51,12 @@ class AudioManager {
       if (type === 'move') {
         gainNode.gain.setValueAtTime(0.1, this.audioContext.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+      } else if (type === 'error') {
+        gainNode.gain.setValueAtTime(0.15, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+      } else if (type === 'check') {
+        gainNode.gain.setValueAtTime(0.12, this.audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
       }
 
       oscillator.start(this.audioContext.currentTime);
@@ -62,6 +68,14 @@ class AudioManager {
 
   playMoveSound() {
     this.playTone(800, 0.15, 'move');
+  }
+
+  playErrorSound() {
+    this.playTone(300, 0.3, 'error');
+  }
+
+  playCheckSound() {
+    this.playTone(1000, 0.2, 'check');
   }
 
   async ensureAudioReady() {
@@ -122,7 +136,7 @@ function flipBoard(board) {
 function NotificationBar({ notification, onClose }) {
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(onClose, 5000);
+      const timer = setTimeout(onClose, 2500); // Changed to 2.5 seconds
       return () => clearTimeout(timer);
     }
   }, [notification, onClose]);
@@ -132,19 +146,6 @@ function NotificationBar({ notification, onClose }) {
   return (
     <div className={`notification-bar ${notification.type}`}>
       {notification.message}
-      <button 
-        onClick={onClose}
-        style={{
-          marginLeft: '12px',
-          background: 'none',
-          border: 'none',
-          color: 'inherit',
-          cursor: 'pointer',
-          fontSize: '16px'
-        }}
-      >
-        ×
-      </button>
     </div>
   );
 }
@@ -205,11 +206,9 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
       if (gameData.videoRoom && gameData.videoRoom.url) {
         console.log('🎥 Video room available:', gameData.videoRoom.url);
         setVideoRoomUrl(gameData.videoRoom.url);
-        showNotification(`Game started with video! Playing as ${gameData.color}`, 'success');
       } else {
         console.log('⚠️  No video room - playing without video');
         setVideoRoomUrl(null);
-        showNotification(`Game started! Playing as ${gameData.color}`, 'success');
       }
       
       audioManager.playMoveSound();
@@ -267,9 +266,12 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     };
   }, []);
 
-  // Notification helpers
+  // Notification helpers - now only for critical errors
   const showNotification = (message, type = 'info') => {
-    setNotification({ message, type });
+    // Only show critical system notifications
+    if (type === 'error' && message.includes('connection')) {
+      setNotification({ message, type });
+    }
   };
 
   const hideNotification = () => {
@@ -301,41 +303,24 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
           showGameStatus('CHECKMATE!', 'checkmate', 3000);
         } else {
           showGameStatus('CHECK!', 'check', 2000);
+          audioManager.playCheckSound();
         }
       }
       
       if (data.gameEnded) {
         setGameStatus('ended');
         setGameWinner(data.winner);
-        
-        let message = 'Game Over! ';
-        if (data.winner) {
-          message += `${data.winner} wins by ${data.reason}!`;
-        } else {
-          message += `Draw by ${data.reason}!`;
-        }
-        showNotification(message, 'info');
       }
     };
 
     const handleInvalidMove = (data) => {
-      showNotification(`Invalid move: ${data.reason}`, 'error');
+      audioManager.playErrorSound();
       setSelectedSquare(null);
     };
 
     const handleGameEnded = (data) => {
       setGameStatus('ended');
       setGameWinner(data.winner);
-      
-      let message = 'Game Over! ';
-      if (data.reason === 'resignation') {
-        message += `${data.winner} wins! ${data.resignedPlayer} resigned.`;
-      } else if (data.reason === 'timeout') {
-        message += `${data.winner} wins! ${data.timeoutPlayer} ran out of time.`;
-      } else if (data.reason === 'disconnection') {
-        message += `${data.winner} wins! ${data.disconnectedPlayer} disconnected.`;
-      }
-      showNotification(message, 'warning');
       
       // Leave video call after game ends
       setTimeout(() => {
@@ -377,7 +362,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
   const handleSquarePress = async (row, col) => {
     if (gameStatus !== 'playing') return;
     if (currentTurn !== playerColor) {
-      showNotification("It's not your turn!", 'warning');
+      audioManager.playErrorSound();
       return;
     }
     
@@ -408,11 +393,11 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
             promotion: 'q'
           }, playerColor);
         } else {
-          showNotification('Invalid move!', 'error');
+          audioManager.playErrorSound();
           setSelectedSquare(null);
         }
       } catch (error) {
-        showNotification('Invalid move!', 'error');
+        audioManager.playErrorSound();
         setSelectedSquare(null);
       }
     } else {
@@ -425,7 +410,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
         if (isPlayersPiece) {
           setSelectedSquare([row, col]);
         } else {
-          showNotification("You can't move your opponent's pieces!", 'warning');
+          audioManager.playErrorSound();
         }
       }
     }
@@ -490,14 +475,27 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
       </div>
 
       <div className="game-main">
-        <div className="video-left">
-          <VideoCall 
-            isOpponent={true}
-            timer={<Timer time={blackTime} isActive={currentTurn === 'black' && gameStatus === 'playing'} />}
-            playerLabel={getPlayerName('black')}
-            videoRoomUrl={videoRoomUrl}
-            userName={currentUser?.username}
-          />
+        {/* Mobile: videos side-by-side container, Desktop: individual positioning */}
+        <div className="mobile-videos-container">
+          <div className="video-left">
+            <VideoCall 
+              isOpponent={true}
+              timer={<Timer time={blackTime} isActive={currentTurn === 'black' && gameStatus === 'playing'} />}
+              playerLabel={getPlayerName('black')}
+              videoRoomUrl={videoRoomUrl}
+              userName={currentUser?.username}
+            />
+          </div>
+
+          <div className="video-right">
+            <VideoCall 
+              isOpponent={false}
+              timer={<Timer time={whiteTime} isActive={currentTurn === 'white' && gameStatus === 'playing'} />}
+              playerLabel={getPlayerName('white')}
+              videoRoomUrl={videoRoomUrl}
+              userName={currentUser?.username}
+            />
+          </div>
         </div>
 
         <div className="chess-board-container">
@@ -508,24 +506,6 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
           />
           <GameStatusIndicator status={gameStatusIndicator} />
         </div>
-
-        <div className="video-right">
-          <VideoCall 
-            isOpponent={false}
-            timer={<Timer time={whiteTime} isActive={currentTurn === 'white' && gameStatus === 'playing'} />}
-            playerLabel={getPlayerName('white')}
-            videoRoomUrl={videoRoomUrl}
-            userName={currentUser?.username}
-          />
-        </div>
-      </div>
-
-      <div className="controls">
-        {gameStatus === 'ended' && (
-          <button className="control-button new-game-button" onClick={onBackToSplash}>
-            New Game
-          </button>
-        )}
       </div>
     </div>
   );

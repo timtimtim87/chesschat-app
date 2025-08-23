@@ -335,7 +335,7 @@ body {
   background: rgba(239, 68, 68, 0.8);
 }
 
-/* Notification bar */
+/* Notification bar - simplified without X button */
 .notification-bar {
   position: fixed;
   top: 80px;
@@ -351,6 +351,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   animation: slideDown 0.3s ease-out;
+  max-width: 90vw;
+  text-align: center;
 }
 
 .notification-bar.info {
@@ -889,43 +891,6 @@ body {
   transform: translateY(-1px);
 }
 
-/* Controls - bottom center */
-.controls {
-  padding: 20px;
-  text-align: center;
-}
-
-.control-button {
-  padding: 12px 32px;
-  border-radius: 25px;
-  border: none;
-  font-weight: bold;
-  font-size: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-}
-
-.start-button {
-  background: linear-gradient(45deg, #8b5cf6, #ec4899);
-  color: white;
-}
-
-.start-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-}
-
-.new-game-button {
-  background: linear-gradient(45deg, #10b981, #3b82f6);
-  color: white;
-}
-
-.new-game-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-}
-
 /* Responsive for smaller screens */
 @media (max-width: 1024px) {
   .game-main {
@@ -962,39 +927,72 @@ body {
   
   .game-screen {
     max-height: none;
+    height: auto;
+  }
+
+  /* Mobile layout: videos on top, chess below */
+  .game-main {
+    flex-direction: column;
+    gap: 8px; /* Minimal spacing */
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  /* Mobile: videos side-by-side container */
+  .mobile-videos-container {
+    display: flex; /* Override desktop 'contents' */
+    gap: 6px; /* Very small gap between videos */
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 4px;
+  }
+
+  .video-left,
+  .video-right {
+    width: calc(50vw - 15px); /* Half screen width minus padding and gap */
+    max-width: 180px;
+    height: 200px;
+    flex-shrink: 0;
+  }
+  
+  .chess-board-container {
+    margin-top: 0;
+    padding: 12px; /* Reduced padding */
   }
   
   .chess-board {
-    width: 320px;
-    height: 320px;
+    width: min(85vw, 340px); /* Responsive but not too small */
+    height: min(85vw, 340px);
   }
   
   .chess-square {
-    width: 40px;
-    height: 40px;
+    width: min(10.6vw, 42.5px);
+    height: min(10.6vw, 42.5px);
   }
   
   .chess-piece {
-    font-size: 24px;
-  }
-  
-  .video-left,
-  .video-right {
-    height: 160px;
+    font-size: min(6vw, 28px);
   }
   
   .header {
-    padding: 10px 15px;
+    padding: 8px 12px; /* Reduced header padding */
+    margin-bottom: 8px; /* Less margin */
   }
   
   .header-button {
     min-width: 80px;
     font-size: 12px;
-    padding: 8px 12px;
+    padding: 6px 10px; /* Smaller buttons */
+  }
+
+  .title {
+    font-size: 20px; /* Smaller title */
+  }
+
+  .status {
+    font-size: 12px; /* Smaller status text */
   }
 }
-
-
 
 /* Game Invitation Modal */
 .invitation-modal {
@@ -1101,4 +1099,3 @@ body {
     transform: scale(1.05);
   }
 }
-
