@@ -1,4 +1,4 @@
-// src/components/VideoCall.js - Fixed with automatic opponent video detection
+// src/components/VideoCall.js - Fixed with enhanced cleanup and better mobile handling
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import dailyService from '../services/dailyService';
 
@@ -15,6 +15,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
   const initializationRef = useRef(false);
   const connectionTimeoutRef = useRef(null);
   const mediaUpdateTimeoutRef = useRef(null);
+  const cleanupExecutedRef = useRef(false);
 
   // FIXED: Only ONE component should initialize the video call (not both)
   useEffect(() => {
@@ -31,15 +32,106 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
     }
 
     return () => {
-      // Cleanup timeouts
-      if (connectionTimeoutRef.current) {
-        clearTimeout(connectionTimeoutRef.current);
-      }
-      if (mediaUpdateTimeoutRef.current) {
-        clearTimeout(mediaUpdateTimeoutRef.current);
+      // ENHANCED: Comprehensive component cleanup
+      if (!cleanupExecutedRef.current) {
+        console.log('🧹 VideoCall component cleanup starting...');
+        cleanupExecutedRef.current = true;
+        performComponentCleanup();
       }
     };
   }, [videoRoomUrl, userName, isOpponent]);
+
+  // ENHANCED: Comprehensive cleanup function
+  const performComponentCleanup = useCallback(() => {
+    console.log('🧹 Performing comprehensive VideoCall component cleanup...');
+    
+    // Clear all timeouts
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+      console.log('🧹 Cleared connection timeout');
+    }
+    
+    if (mediaUpdateTimeoutRef.current) {
+      clearTimeout(mediaUpdateTimeoutRef.current);
+      mediaUpdateTimeoutRef.current = null;
+      console.log('🧹 Cleared media update timeout');
+    }
+    
+    // Clean up video element
+    if (videoRef.current) {
+      console.log('🧹 Cleaning up video element...');
+      try {
+        if (videoRef.current.srcObject) {
+          const tracks = videoRef.current.srcObject.getTracks();
+          tracks.forEach(track => {
+            track.stop();
+            console.log('🛑 Stopped video track during component cleanup:', track.kind, track.id);
+          });
+          videoRef.current.srcObject = null;
+        }
+        videoRef.current.pause();
+        console.log('✅ Video element cleaned up');
+      } catch (error) {
+        console.warn('⚠️  Error cleaning up video element:', error);
+      }
+    }
+    
+    // Clean up audio element
+    if (audioRef.current) {
+      console.log('🧹 Cleaning up audio ref element...');
+      try {
+        if (audioRef.current.srcObject) {
+          const tracks = audioRef.current.srcObject.getTracks();
+          tracks.forEach(track => {
+            track.stop();
+            console.log('🛑 Stopped audio track from ref:', track.kind, track.id);
+          });
+          audioRef.current.srcObject = null;
+        }
+        audioRef.current.pause();
+      } catch (error) {
+        console.warn('⚠️  Error cleaning up audio ref:', error);
+      }
+    }
+    
+    // CRITICAL: Clean up all audio elements created by this component
+    try {
+      console.log('🧹 Cleaning up all video-audio elements...');
+      const audioElements = document.querySelectorAll('[id^="video-audio-"]');
+      let cleanedCount = 0;
+      
+      audioElements.forEach(el => {
+        try {
+          if (el.srcObject) {
+            const tracks = el.srcObject.getTracks();
+            tracks.forEach(track => {
+              track.stop();
+              console.log('🛑 Stopped track from audio element:', track.kind, track.id);
+            });
+            el.srcObject = null;
+          }
+          el.pause();
+          el.remove();
+          cleanedCount++;
+          console.log('🗑️  Removed audio element:', el.id);
+        } catch (elementError) {
+          console.warn('⚠️  Error cleaning up audio element:', el.id, elementError);
+        }
+      });
+      
+      if (cleanedCount > 0) {
+        console.log(`✅ Cleaned up ${cleanedCount} audio elements`);
+      } else {
+        console.log('ℹ️ No audio elements found to clean up');
+      }
+      
+    } catch (error) {
+      console.warn('⚠️  Error during audio elements cleanup:', error);
+    }
+    
+    console.log('✅ VideoCall component cleanup completed');
+  }, []);
 
   const initializeVideoCall = useCallback(async () => {
     try {
@@ -148,6 +240,23 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
         const updatedParticipants = dailyService.getAllParticipants();
         setParticipants(updatedParticipants);
         forceMediaUpdate(updatedParticipants);
+        
+        // ENHANCED: Clean up specific audio elements for the participant who left
+        const audioElementId = `video-audio-${event.participant.session_id}`;
+        const audioElement = document.getElementById(audioElementId);
+        if (audioElement) {
+          console.log(`🧹 Cleaning up audio element for departed participant: ${event.participant.user_name}`);
+          if (audioElement.srcObject) {
+            const tracks = audioElement.srcObject.getTracks();
+            tracks.forEach(track => {
+              track.stop();
+              console.log('🛑 Stopped track from departed participant audio element:', track.kind);
+            });
+          }
+          audioElement.pause();
+          audioElement.remove();
+          console.log(`✅ Removed audio element for ${event.participant.user_name}`);
+        }
       } catch (error) {
         console.error('Error handling participant left:', error);
       }
@@ -191,6 +300,22 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
         const updatedParticipants = dailyService.getAllParticipants();
         setParticipants(updatedParticipants);
         forceMediaUpdate(updatedParticipants);
+        
+        // ENHANCED: Clean up audio elements when audio track stops
+        if (event.track?.kind === 'audio' && event.participant?.session_id) {
+          const audioElementId = `video-audio-${event.participant.session_id}`;
+          const audioElement = document.getElementById(audioElementId);
+          if (audioElement) {
+            console.log(`🧹 Cleaning up audio for stopped track: ${event.participant.user_name}`);
+            if (audioElement.srcObject) {
+              const tracks = audioElement.srcObject.getTracks();
+              tracks.forEach(track => track.stop());
+            }
+            audioElement.srcObject = null;
+            audioElement.pause();
+            // Note: Don't remove element here, participant might start audio again
+          }
+        }
       } catch (error) {
         console.error('Error handling track stopped:', error);
       }
@@ -203,17 +328,34 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
     };
 
     const handleLeftMeeting = () => {
-      console.log('👋 Left video meeting');
+      console.log('👋 Left video meeting - cleaning up VideoCall component state');
       setConnectionStatus('disconnected');
       setParticipants({});
       setErrorMessage('');
       
-      // Clean up media elements
+      // Clean up media elements when leaving meeting
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
       if (audioRef.current) {
         audioRef.current.srcObject = null;
+      }
+      
+      // ENHANCED: Clean up all associated audio elements
+      try {
+        const audioElements = document.querySelectorAll('[id^="video-audio-"]');
+        audioElements.forEach(el => {
+          if (el.srcObject) {
+            const tracks = el.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+          }
+          el.srcObject = null;
+          el.pause();
+          el.remove();
+        });
+        console.log(`🧹 Cleaned up ${audioElements.length} audio elements after leaving meeting`);
+      } catch (error) {
+        console.warn('Error cleaning up audio elements after leaving meeting:', error);
       }
     };
 
@@ -257,7 +399,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
             : Object.values(currentParticipants).find(p => p.local);
           
           // Check if we should have video but don't
-          if (targetParticipant?.videoTrack && targetParticipant?.video && !videoRef.current?.srcObject) {
+          if (targetParticipant?.videoTrack && targetParticipant?.video && videoRef.current && !videoRef.current.srcObject) {
             console.log('🔄 Periodic check: Missing video stream, forcing update');
             updateMediaElements(currentParticipants);
           }
@@ -317,8 +459,10 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
                 // Try to play again after a short delay
                 setTimeout(async () => {
                   try {
-                    await videoRef.current.play();
-                    console.log(`✅ Video playing (retry) for ${targetParticipant.user_name}`);
+                    if (videoRef.current) {
+                      await videoRef.current.play();
+                      console.log(`✅ Video playing (retry) for ${targetParticipant.user_name}`);
+                    }
                   } catch (retryError) {
                     console.warn('Video retry failed:', retryError);
                   }
@@ -331,6 +475,8 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
           // No video track or video disabled
           if (videoRef.current.srcObject) {
             console.log(`📺 Clearing video for ${targetParticipant.user_name} (no video track or disabled)`);
+            const currentTracks = videoRef.current.srcObject.getTracks();
+            currentTracks.forEach(track => track.stop());
             videoRef.current.srcObject = null;
           }
         }
@@ -342,6 +488,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
           let audioElement = document.getElementById(audioId);
           
           if (!audioElement) {
+            console.log(`🔊 Creating new audio element for ${targetParticipant.user_name}`);
             audioElement = document.createElement('audio');
             audioElement.id = audioId;
             audioElement.autoplay = true;
@@ -349,7 +496,6 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
             audioElement.style.display = 'none';
             audioElement.volume = 1.0;
             document.body.appendChild(audioElement);
-            console.log(`🔊 Created audio element for ${targetParticipant.user_name}`);
           }
           
           const audioStream = new MediaStream([targetParticipant.audioTrack]);
@@ -359,6 +505,13 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
             currentAudioStream.getAudioTracks()[0].id === targetParticipant.audioTrack.id;
           
           if (!audioTracksMatch) {
+            console.log(`🔊 Setting new audio stream for ${targetParticipant.user_name}`);
+            
+            // Stop old tracks before setting new ones
+            if (currentAudioStream) {
+              currentAudioStream.getTracks().forEach(track => track.stop());
+            }
+            
             audioElement.srcObject = audioStream;
             
             const playAudio = async () => {
@@ -371,11 +524,24 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
             };
             playAudio();
           }
+        } else if (!targetParticipant.local) {
+          // Remote participant but no audio - clean up any existing audio element
+          const audioId = `video-audio-${targetParticipant.session_id}`;
+          const audioElement = document.getElementById(audioId);
+          if (audioElement && audioElement.srcObject) {
+            console.log(`🔇 Clearing audio for ${targetParticipant.user_name} (no audio track or disabled)`);
+            const tracks = audioElement.srcObject.getTracks();
+            tracks.forEach(track => track.stop());
+            audioElement.srcObject = null;
+            audioElement.pause();
+          }
         }
       } else {
         // No participant - clear video
         if (videoRef.current.srcObject) {
           console.log(`📺 No ${isOpponent ? 'remote' : 'local'} participant to show - clearing video`);
+          const tracks = videoRef.current.srcObject.getTracks();
+          tracks.forEach(track => track.stop());
           videoRef.current.srcObject = null;
         }
       }
@@ -447,7 +613,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
         if (audioEl.paused) {
           try {
             await audioEl.play();
-            console.log('▶️ Resumed audio element');
+            console.log('▶️ Resumed audio element on user interaction');
           } catch (error) {
             console.warn('Could not resume audio:', error);
           }
@@ -530,7 +696,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
         return {
           emoji: '🔌',
           text: isOpponent ? 'Opponent disconnected' : 'Disconnected',
-          subtext: 'Trying to reconnect...'
+          subtext: 'Video connection lost'
         };
       case 'no-room':
         return {
@@ -610,7 +776,8 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
                 border: 'none',
                 borderRadius: '6px',
                 fontSize: '12px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                touchAction: 'manipulation'
               }}
             >
               🔄 Retry Connection
@@ -633,6 +800,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
             className={`media-control-btn-small ${isVideoEnabled ? 'active' : 'inactive'}`}
             onClick={toggleVideo}
             title="Toggle Camera"
+            style={{ touchAction: 'manipulation' }}
           >
             {isVideoEnabled ? '📹' : '📹'}
           </button>
@@ -640,6 +808,7 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
             className={`media-control-btn-small ${isAudioEnabled ? 'active' : 'inactive'}`}
             onClick={toggleAudio}
             title="Toggle Microphone"
+            style={{ touchAction: 'manipulation' }}
           >
             {isAudioEnabled ? '🎤' : '🎤'}
           </button>

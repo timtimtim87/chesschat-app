@@ -1,9 +1,10 @@
-// src/App.js - Updated for simplified room joining flow
+// src/App.js - Updated for simplified room joining flow with complete video cleanup fix
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import GameScreen from './components/GameScreen';
 import Login from './components/Login';
 import socketService from './services/socketService';
+import dailyService from './services/dailyService';
 
 function App() {
   const [gameState, setGameState] = useState('splash'); // 'splash', 'waiting', 'playing'
@@ -63,16 +64,30 @@ function App() {
       }
     });
 
-    // Game ended - go back to splash
-    socketService.on('game-ended', () => {
-      // Small delay to see final game state
+    // ENHANCED: Game ended - clean up video immediately and notify server
+    socketService.on('game-ended', async (data) => {
+      console.log('🏁 Game ended event received:', data);
+      
+      // Immediate video cleanup
+      try {
+        if (dailyService.isCallActive()) {
+          console.log('📹 Game ended - cleaning up video call immediately');
+          await dailyService.leaveCall();
+          console.log('✅ Video cleaned up after game end');
+        }
+      } catch (error) {
+        console.error('❌ Video cleanup error after game end:', error);
+        dailyService.cleanup();
+      }
+      
+      // Shorter delay to see final game state
       setTimeout(() => {
         setGameState('splash');
         setGameData(null);
         setCurrentUser(null);
         setWaitingMessage('');
         setError('');
-      }, 3000);
+      }, 2000); // Reduced from 3000 to 2000
     });
 
     return () => {
@@ -95,12 +110,68 @@ function App() {
     socketService.enterMatchCode(roomCode, displayName);
   };
 
-  const handleBackToSplash = () => {
+  // CRITICAL FIX: Enhanced handleBackToSplash with proper game termination
+  const handleBackToSplash = async () => {
+    console.log('🏠 Going back to splash - terminating game and cleaning up...');
+    
+    // Debug current state
+    console.log('🔍 State BEFORE cleanup:', {
+      gameState,
+      hasGameData: !!gameData,
+      hasCurrentUser: !!currentUser,
+      dailyServiceActive: dailyService.isCallActive(),
+      participantCount: dailyService.getParticipantCount()
+    });
+    
+    // STEP 1: If we're in an active game, send resignation to terminate for both players
+    if (gameState === 'playing' && gameData && gameData.roomId) {
+      try {
+        console.log('📤 Active game detected - sending resignation to terminate game for both players');
+        
+        // Send resignation to server to end the game for BOTH players
+        socketService.resign(gameData.roomId, gameData.color);
+        console.log('✅ Resignation sent to server - game will end for both players');
+        
+        // Small delay to let server process the resignation
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        console.error('❌ Error sending resignation:', error);
+      }
+    }
+    
+    // STEP 2: Clean up video call
+    try {
+      const wasVideoActive = dailyService.isCallActive();
+      if (wasVideoActive) {
+        console.log('📹 Active video call detected - cleaning up video');
+        await dailyService.leaveCall();
+        console.log('✅ Video call cleaned up successfully');
+      } else {
+        console.log('ℹ️ No active video call to clean up');
+      }
+    } catch (error) {
+      console.error('❌ Error cleaning up video call:', error);
+      // Force cleanup anyway
+      dailyService.cleanup();
+    }
+    
+    // STEP 3: Reset all state
     setGameState('splash');
     setGameData(null);
     setCurrentUser(null);
     setWaitingMessage('');
     setError('');
+    
+    // Debug state after cleanup
+    console.log('🔍 State AFTER cleanup:', {
+      gameState: 'splash',
+      hasGameData: false,
+      hasCurrentUser: false,
+      dailyServiceActive: dailyService.isCallActive(),
+      participantCount: dailyService.getParticipantCount()
+    });
+    
+    console.log('✅ Returned to splash - game terminated for both players, video cleaned up');
   };
 
   // Render appropriate screen based on game state

@@ -1,4 +1,4 @@
-// src/services/dailyService.js - Fixed singleton pattern to prevent duplicate instances
+// src/services/dailyService.js - Fixed singleton pattern with comprehensive cleanup
 import DailyIframe from '@daily-co/daily-js';
 
 class DailyService {
@@ -46,28 +46,11 @@ class DailyService {
 
       // Create call object with FIXED settings for call object mode
       this.callFrame = DailyIframe.createCallObject({
-        // Remove invalid options for call object mode
-        // showLeaveButton: false,           // Invalid in call object mode
-        // showFullscreenButton: false,      // Invalid in call object mode
-        // showLocalVideo: false,            // Invalid in call object mode
-        // showParticipantsBar: false,       // Invalid in call object mode
-        // activeSpeakerMode: true,          // Invalid in call object mode
-        
         // Valid options for call object mode
         receiveSettings: {
           video: 'optimal',
           audio: 'optimal'
-        },
-        // Remove invalid sendSettings
-        // sendSettings: {
-        //   video: {
-        //     processor: {
-        //       type: 'background-blur'
-        //     }
-        //   }
-        // },
-        
-        // No iframe styling needed for call object mode
+        }
       });
 
       // Set up event listeners before joining
@@ -381,27 +364,104 @@ class DailyService {
     }
   }
 
-  // Enhanced connection management
+  // CRITICAL: Comprehensive video cleanup - this is the main fix
   async leaveCall() {
     if (this.callFrame) {
       try {
-        console.log('👋 Leaving video call...');
+        console.log('👋 Leaving video call - comprehensive cleanup starting...');
         
-        // Clean up audio elements
-        const audioElements = document.querySelectorAll('[id^="daily-audio-"]');
-        audioElements.forEach(el => {
-          el.srcObject = null;
-          el.remove();
-        });
+        // STEP 1: Stop all local tracks immediately to turn off camera/mic
+        try {
+          console.log('🛑 Stopping all local media tracks...');
+          const localParticipant = this.getLocalParticipant();
+          if (localParticipant) {
+            if (localParticipant.videoTrack) {
+              console.log('🛑 Stopping local video track');
+              localParticipant.videoTrack.stop();
+            }
+            if (localParticipant.audioTrack) {
+              console.log('🛑 Stopping local audio track');
+              localParticipant.audioTrack.stop();
+            }
+          }
+        } catch (trackError) {
+          console.warn('⚠️  Error stopping local tracks:', trackError);
+        }
         
-        await this.callFrame.leave();
-        await this.callFrame.destroy();
+        // STEP 2: Clean up all DOM media elements immediately
+        try {
+          console.log('🧹 Cleaning up all DOM media elements...');
+          
+          // Clean up all audio elements created by our video system
+          const audioElements = document.querySelectorAll('[id^="video-audio-"], [id^="daily-audio-"], audio[src*="blob:"]');
+          audioElements.forEach((el, index) => {
+            console.log(`🧹 Cleaning up audio element ${index + 1}:`, el.id || 'unnamed');
+            if (el.srcObject) {
+              const tracks = el.srcObject.getTracks();
+              tracks.forEach(track => {
+                track.stop();
+                console.log('🛑 Stopped track from audio element:', track.kind, track.id);
+              });
+              el.srcObject = null;
+            }
+            el.pause();
+            el.remove();
+          });
+          
+          // Clean up all video elements
+          const videoElements = document.querySelectorAll('video');
+          videoElements.forEach((el, index) => {
+            console.log(`🧹 Cleaning up video element ${index + 1}`);
+            if (el.srcObject) {
+              const tracks = el.srcObject.getTracks();
+              tracks.forEach(track => {
+                track.stop();
+                console.log('🛑 Stopped track from video element:', track.kind, track.id);
+              });
+              el.srcObject = null;
+            }
+            el.pause();
+          });
+          
+          console.log('✅ All DOM media elements cleaned up');
+        } catch (mediaError) {
+          console.warn('⚠️  Error cleaning up media elements:', mediaError);
+        }
         
-        console.log('✅ Video call left successfully');
+        // STEP 3: Leave the Daily.co meeting
+        try {
+          console.log('📞 Leaving Daily.co meeting...');
+          await this.callFrame.leave();
+          console.log('✅ Left Daily.co meeting successfully');
+        } catch (leaveError) {
+          console.warn('⚠️  Error leaving meeting:', leaveError);
+        }
+        
+        // STEP 4: Destroy the call frame
+        try {
+          console.log('💥 Destroying Daily.co call frame...');
+          await this.callFrame.destroy();
+          console.log('✅ Call frame destroyed successfully');
+        } catch (destroyError) {
+          console.warn('⚠️  Error destroying call frame:', destroyError);
+        }
+        
       } catch (error) {
-        console.error('❌ Error leaving video call:', error);
+        console.error('❌ Error during comprehensive video cleanup:', error);
+        
+        // EMERGENCY: Force destroy if anything fails
+        try {
+          if (this.callFrame) {
+            console.log('🚨 Emergency: Force destroying call frame');
+            await this.callFrame.destroy();
+          }
+        } catch (emergencyError) {
+          console.error('❌ Emergency destroy also failed:', emergencyError);
+        }
       }
       
+      // STEP 5: Reset all service state (always do this, even if cleanup failed)
+      console.log('🔄 Resetting all video service state...');
       this.callFrame = null;
       this.participants = {};
       this.isConnected = false;
@@ -409,7 +469,97 @@ class DailyService {
       this.userName = null;
       this.joinAttempts = 0;
       this.isJoining = false;
+      
+      console.log('✅ Video call cleanup completed - all resources freed');
+    } else {
+      console.log('ℹ️ No active call frame to clean up');
     }
+  }
+
+  // ENHANCED: Emergency cleanup method for critical failures
+  cleanup() {
+    console.log('🚨 EMERGENCY VIDEO CLEANUP - forcing all operations...');
+    
+    try {
+      // Force stop ALL media tracks in the system
+      console.log('🛑 Emergency: Stopping all media tracks...');
+      if (this.callFrame) {
+        const participants = this.getAllParticipants();
+        Object.values(participants).forEach(participant => {
+          if (participant.videoTrack) {
+            try {
+              participant.videoTrack.stop();
+              console.log('🛑 Emergency stopped video track for:', participant.user_name);
+            } catch (e) {
+              console.warn('Could not stop video track:', e);
+            }
+          }
+          if (participant.audioTrack) {
+            try {
+              participant.audioTrack.stop();
+              console.log('🛑 Emergency stopped audio track for:', participant.user_name);
+            } catch (e) {
+              console.warn('Could not stop audio track:', e);
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.warn('⚠️  Error during emergency track cleanup:', error);
+    }
+    
+    // Force cleanup ALL media elements in the entire document
+    try {
+      console.log('🧹 Emergency: Cleaning up all media elements in document...');
+      const allMediaElements = document.querySelectorAll('audio, video, [id*="audio"], [id*="video"]');
+      console.log(`🧹 Found ${allMediaElements.length} media elements to clean up`);
+      
+      allMediaElements.forEach((el, index) => {
+        try {
+          if (el.srcObject) {
+            const tracks = el.srcObject.getTracks();
+            tracks.forEach(track => {
+              track.stop();
+            });
+            el.srcObject = null;
+          }
+          el.pause();
+          
+          // Remove elements that look like our video/audio elements
+          if (el.id && (el.id.includes('audio') || el.id.includes('video') || el.id.includes('daily'))) {
+            el.remove();
+            console.log(`🗑️  Removed element: ${el.id}`);
+          }
+        } catch (elementError) {
+          console.warn(`Could not clean up element ${index}:`, elementError);
+        }
+      });
+    } catch (error) {
+      console.warn('⚠️  Error during emergency media element cleanup:', error);
+    }
+    
+    // Force destroy call frame
+    if (this.callFrame) {
+      try {
+        console.log('💥 Emergency: Force destroying call frame...');
+        this.callFrame.destroy();
+      } catch (error) {
+        console.warn('⚠️  Emergency destroy failed:', error);
+      }
+    }
+    
+    // Reset ALL state
+    console.log('🔄 Emergency: Resetting all service state...');
+    this.callFrame = null;
+    this.participants = {};
+    this.isConnected = false;
+    this.roomUrl = null;
+    this.userName = null;
+    this.joinAttempts = 0;
+    this.isJoining = false;
+    this.eventHandlers = {};
+    
+    console.log('✅ Emergency cleanup completed - system reset');
   }
 
   // Utility methods
@@ -476,18 +626,6 @@ class DailyService {
       }
     }
   }
-
-  // Cleanup method
-  cleanup() {
-    if (this.callFrame) {
-      this.leaveCall();
-    }
-    this.eventHandlers = {};
-    
-    // Clean up any remaining audio elements
-    const audioElements = document.querySelectorAll('[id^="daily-audio-"]');
-    audioElements.forEach(el => el.remove());
-  }
 }
 
 // Create singleton instance
@@ -495,7 +633,7 @@ const dailyService = new DailyService();
 
 // Enhanced cleanup on page unload
 const cleanup = () => {
-  console.log('🧹 Page unload - cleaning up video service');
+  console.log('🧹 Page unload - emergency cleaning up video service');
   dailyService.cleanup();
 };
 

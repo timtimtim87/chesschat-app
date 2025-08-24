@@ -1,4 +1,4 @@
-// src/components/GameScreen.js - Simplified for direct game play
+// src/components/GameScreen.js - Fixed logic: leaving video = ending game for both players
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
@@ -136,7 +136,7 @@ function flipBoard(board) {
 function NotificationBar({ notification, onClose }) {
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(onClose, 2500); // Changed to 2.5 seconds
+      const timer = setTimeout(onClose, 2500);
       return () => clearTimeout(timer);
     }
   }, [notification, onClose]);
@@ -185,6 +185,9 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
   const [videoRoomUrl, setVideoRoomUrl] = useState(null);
   const [videoConnected, setVideoConnected] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
+  
+  // FIXED: Add resign confirmation state (no window.confirm on mobile)
+  const [showResignConfirm, setShowResignConfirm] = useState(false);
 
   // Initialize game from gameData prop
   useEffect(() => {
@@ -254,24 +257,67 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     }
   }, [board, playerColor]);
 
-  // Enhanced cleanup on unmount
+  // ENHANCED: Component cleanup with video cleanup
   useEffect(() => {
     return () => {
-      if (videoRoomUrl) {
-        console.log('🧹 Component unmounting - cleaning up video');
-        dailyService.leaveCall().catch(err => 
-          console.warn('Video cleanup error:', err)
-        );
+      console.log('🧹 GameScreen component unmounting - forcing video cleanup');
+      
+      // Force video cleanup on unmount
+      if (dailyService.isCallActive()) {
+        dailyService.leaveCall().catch(error => {
+          console.warn('Error during component unmount video cleanup:', error);
+          dailyService.cleanup();
+        });
       }
     };
   }, []);
 
-  // Notification helpers - now only for critical errors
+  // CRITICAL FIX: Monitor video connection - if video ends, end game for both players
+  useEffect(() => {
+    const handleVideoDisconnection = () => {
+      console.log('🚨 Video connection lost - triggering game end for both players');
+      
+      // If we're still in an active game and video disconnects, end the game
+      if (gameStatus === 'playing' && roomId) {
+        console.log('📤 Video lost during active game - sending resignation to server');
+        
+        // Send resignation to server to end game for both players
+        socketService.resign(roomId, playerColor);
+        
+        // Set local game as ended
+        setGameStatus('ended');
+        setGameWinner(playerColor === 'white' ? 'black' : 'white');
+        
+        // Show notification
+        setNotification({
+          message: 'Game ended - video connection lost',
+          type: 'error'
+        });
+        
+        // Auto return to splash after short delay
+        setTimeout(() => {
+          onBackToSplash();
+        }, 3000);
+      }
+    };
+
+    // Listen for video disconnection events
+    dailyService.on('left-meeting', handleVideoDisconnection);
+    dailyService.on('error', (event) => {
+      if (event.type === 'connection-failed' || event.type === 'join-failed') {
+        handleVideoDisconnection();
+      }
+    });
+
+    return () => {
+      dailyService.off('left-meeting', handleVideoDisconnection);
+      dailyService.off('error', handleVideoDisconnection);
+    };
+  }, [gameStatus, roomId, playerColor, onBackToSplash]);
+
+  // Notification helpers
   const showNotification = (message, type = 'info') => {
-    // Only show critical system notifications
-    if (type === 'error' && message.includes('connection')) {
-      setNotification({ message, type });
-    }
+    setNotification({ message, type });
   };
 
   const hideNotification = () => {
@@ -318,18 +364,24 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
       setSelectedSquare(null);
     };
 
-    const handleGameEnded = (data) => {
+    // ENHANCED: Game ended handler with immediate video cleanup
+    const handleGameEnded = async (data) => {
+      console.log('🏁 Game ended event received:', data);
       setGameStatus('ended');
       setGameWinner(data.winner);
       
-      // Leave video call after game ends
-      setTimeout(() => {
-        if (videoRoomUrl) {
-          console.log('🎥 Game ended - leaving video call');
-          dailyService.leaveCall().catch(console.warn);
+      // Immediate video cleanup when game ends
+      try {
+        if (videoRoomUrl && dailyService.isCallActive()) {
+          console.log('📹 Game ended - immediately cleaning up video');
+          await dailyService.leaveCall();
           setVideoRoomUrl(null);
+          console.log('✅ Video cleaned up immediately after game end');
         }
-      }, 5000);
+      } catch (error) {
+        console.error('❌ Error cleaning up video after game end:', error);
+        dailyService.cleanup();
+      }
     };
 
     const handleTimeUpdate = (data) => {
@@ -416,10 +468,42 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     }
   };
 
-  const resignGame = () => {
-    if (window.confirm("Are you sure you want to resign?")) {
+  // FIXED: Resign game - no window.confirm, direct action
+  const resignGame = async () => {
+    console.log('🏳️ Player clicked resign');
+    setShowResignConfirm(true);
+  };
+
+  // FIXED: Handle resign confirmation
+  const handleResignConfirm = async () => {
+    console.log('🏳️ Player confirmed resignation - initiating cleanup...');
+    setShowResignConfirm(false);
+    
+    try {
+      // Send resign to server first
       socketService.resign(roomId, playerColor);
+      console.log('📤 Resign message sent to server');
+      
+      // Then clean up video locally
+      if (videoRoomUrl && dailyService.isCallActive()) {
+        console.log('📹 Cleaning up video after resign');
+        await dailyService.leaveCall();
+        setVideoRoomUrl(null);
+        console.log('✅ Video cleaned up after resign');
+      }
+      
+      // Set game as ended locally
+      setGameStatus('ended');
+      setGameWinner(playerColor === 'white' ? 'black' : 'white');
+      
+    } catch (error) {
+      console.error('❌ Error during resign cleanup:', error);
+      dailyService.cleanup();
     }
+  };
+
+  const handleResignCancel = () => {
+    setShowResignConfirm(false);
   };
 
   // Get display names for players
@@ -448,6 +532,35 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
   return (
     <div className="game-screen">
       <NotificationBar notification={notification} onClose={hideNotification} />
+      
+      {/* FIXED: Custom resign confirmation modal */}
+      {showResignConfirm && (
+        <div className="friends-overlay">
+          <div className="invitation-modal">
+            <h2 className="invitation-title">Resign Game?</h2>
+            <p className="invitation-text">
+              Are you sure you want to resign this game?
+            </p>
+            <p className="invitation-details">
+              Your opponent will win and the game will end.
+            </p>
+            <div className="invitation-actions">
+              <button 
+                onClick={handleResignConfirm}
+                className="decline-button"
+              >
+                Yes, Resign
+              </button>
+              <button 
+                onClick={handleResignCancel}
+                className="accept-button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       <div className="header">
         <button 
