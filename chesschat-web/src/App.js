@@ -1,4 +1,4 @@
-// src/App.js - Updated for simplified room joining flow with complete video cleanup fix
+// src/App.js - Updated error handling: "game is not active" → "Returning to Lobby"
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import GameScreen from './components/GameScreen';
@@ -54,9 +54,32 @@ function App() {
       setError('');
     });
 
-    // Error handling
+    // FIXED: Enhanced error handling with better messages
     socketService.on('error', (errorData) => {
-      setError(errorData.message || 'An error occurred');
+      console.log('❌ Server error received:', errorData);
+      
+      // Transform "game is not active" errors to user-friendly message
+      let displayMessage = errorData.message || 'An error occurred';
+      
+      if (displayMessage.toLowerCase().includes('not active') || 
+          displayMessage.toLowerCase().includes('game room not found')) {
+        displayMessage = 'Returning to Lobby';
+        
+        // If we get this error during gameplay, it means game ended - return to splash
+        if (gameState === 'playing') {
+          console.log('🏠 Game no longer active, returning to splash');
+          setTimeout(() => {
+            setGameState('splash');
+            setGameData(null);
+            setCurrentUser(null);
+            setWaitingMessage('');
+            setError('');
+          }, 1500); // Brief delay to show the message
+        }
+      }
+      
+      setError(displayMessage);
+      
       // If we were waiting, go back to splash
       if (gameState === 'waiting') {
         setGameState('splash');
@@ -80,14 +103,9 @@ function App() {
         dailyService.cleanup();
       }
       
-      // Shorter delay to see final game state
-      setTimeout(() => {
-        setGameState('splash');
-        setGameData(null);
-        setCurrentUser(null);
-        setWaitingMessage('');
-        setError('');
-      }, 2000); // Reduced from 3000 to 2000
+      // REMOVED: Auto-return to splash - let players manually exit
+      // Players can now chat after game ends and manually exit when ready
+      console.log('🎮 Game ended naturally - players can chat and manually exit');
     });
 
     return () => {

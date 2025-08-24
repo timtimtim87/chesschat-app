@@ -73,12 +73,16 @@ body {
   transform: scale(0.98);
 }
 
+/* UPDATED: Exit/Resign button styling - works for both "Resign" and "Exit Game" text */
 .resign-button {
   background: #ef4444;
   color: white;
   /* ENHANCED: Better mobile tap target */
   border: 2px solid transparent;
   position: relative;
+  /* Support for dynamic button text */
+  min-width: 100px;
+  text-align: center;
 }
 
 .resign-button:hover {
@@ -1125,7 +1129,7 @@ body {
     margin-bottom: 8px;
   }
   
-  /* ENHANCED: Better mobile header buttons */
+  /* ENHANCED: Better mobile header buttons - supports dynamic Exit/Resign text */
   .header-button {
     min-width: 90px;
     font-size: 14px;
@@ -1138,10 +1142,13 @@ body {
     justify-content: center;
   }
 
+  /* UPDATED: Exit/Resign button mobile styling - works for both text options */
   .resign-button {
-    /* Extra emphasis for resign button on mobile */
+    /* Extra emphasis for exit/resign button on mobile */
     border: 2px solid rgba(255, 255, 255, 0.3);
     box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+    /* Ensure enough space for "Exit Game" text */
+    min-width: 110px;
   }
 
   .resign-button:active {
