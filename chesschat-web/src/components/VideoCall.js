@@ -626,71 +626,25 @@ export default function VideoCall({ isOpponent, timer, playerLabel, videoRoomUrl
         </div>
       )}
       
-      {/* Media controls for local video only */}
+      {/* Media controls for local video only - minimized */}
       {!isOpponent && videoRoomUrl && connectionStatus === 'connected' && (
-        <div className="media-controls">
+        <div className="media-controls-minimized">
           <button 
-            className={`media-control-btn ${isVideoEnabled ? 'active' : 'inactive'}`}
+            className={`media-control-btn-small ${isVideoEnabled ? 'active' : 'inactive'}`}
             onClick={toggleVideo}
             title="Toggle Camera"
           >
-            {isVideoEnabled ? '📹' : '📹❌'}
+            {isVideoEnabled ? '📹' : '📹'}
           </button>
           <button 
-            className={`media-control-btn ${isAudioEnabled ? 'active' : 'inactive'}`}
+            className={`media-control-btn-small ${isAudioEnabled ? 'active' : 'inactive'}`}
             onClick={toggleAudio}
             title="Toggle Microphone"
           >
-            {isAudioEnabled ? '🎤' : '🎤❌'}
+            {isAudioEnabled ? '🎤' : '🎤'}
           </button>
         </div>
       )}
-      
-      {/* Enhanced player label with connection status */}
-      <div className="label-bottom">
-        <div className="label-text">
-          {playerLabel || (isOpponent ? 'Opponent' : 'You')}
-          {targetParticipant?.user_name && ` (${targetParticipant.user_name})`}
-          
-          {/* Connection status indicator */}
-          <span style={{ marginLeft: '8px', fontSize: '12px' }}>
-            {connectionStatus === 'connected' && (
-              isOpponent 
-                ? (targetParticipant ? '🟢' : '🟡') 
-                : '🟢'
-            )}
-            {connectionStatus === 'connecting' && '🟡'}
-            {connectionStatus === 'waiting-for-connection' && '⏳'}
-            {connectionStatus === 'error' && '🔴'}
-            {connectionStatus === 'no-room' && '📱'}
-            {connectionStatus === 'disconnected' && '🔌'}
-          </span>
-          
-          {/* Media status indicators */}
-          {connectionStatus === 'connected' && targetParticipant && (
-            <>
-              <span style={{ marginLeft: '4px', fontSize: '12px' }}>
-                {targetParticipant.audio ? '🔊' : '🔇'}
-              </span>
-              <span style={{ marginLeft: '2px', fontSize: '12px' }}>
-                {targetParticipant.video ? '📹' : '📷❌'}
-              </span>
-            </>
-          )}
-          
-          {/* Error message */}
-          {errorMessage && connectionStatus === 'error' && (
-            <div style={{ 
-              fontSize: '10px', 
-              color: '#ef4444', 
-              marginTop: '2px',
-              textAlign: 'center'
-            }}>
-              {errorMessage}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

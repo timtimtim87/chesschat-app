@@ -1,4 +1,4 @@
-/* src/App.css - Desktop-optimized layout */
+/* src/App.css - Desktop-optimized layout with mobile responsive */
 * {
   margin: 0;
   padding: 0;
@@ -99,7 +99,7 @@ body {
   color: #a78bfa;
 }
 
-/* Main game area - horizontal layout */
+/* Desktop: Main game area - horizontal layout Video | Chess | Video */
 .game-main {
   display: flex;
   flex: 1;
@@ -108,10 +108,16 @@ body {
   justify-content: center;
 }
 
+/* Desktop: mobile-videos-container should be invisible, children spread out */
+.mobile-videos-container {
+  display: contents; /* Makes container invisible on desktop */
+}
+
 /* Left video - opponent */
 .video-left {
   width: 280px;
   height: 400px;
+  order: 1; /* First position */
 }
 
 /* Center chess board */
@@ -121,6 +127,14 @@ body {
   padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
+  order: 2; /* Center position */
+}
+
+/* Right video - you */
+.video-right {
+  width: 280px;
+  height: 400px;
+  order: 3; /* Last position */
 }
 
 .chess-board {
@@ -188,12 +202,6 @@ body {
 .black-piece {
   color: #1a1a1a;
   text-shadow: 1px 1px 2px #ffffff, 0 0 10px rgba(0, 0, 0, 0.3);
-}
-
-/* Right video - you */
-.video-right {
-  width: 280px;
-  height: 400px;
 }
 
 /* Video styling */
@@ -280,25 +288,7 @@ body {
   }
 }
 
-.label-bottom {
-  position: absolute;
-  bottom: 12px;
-  left: 12px;
-  right: 12px;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 8px 12px;
-  border-radius: 8px;
-  text-align: center;
-  backdrop-filter: blur(10px);
-}
-
-.label-text {
-  color: white;
-  font-size: 14px;
-  font-weight: bold;
-}
-
-/* Media controls for video */
+/* Original media controls (desktop) */
 .media-controls {
   position: absolute;
   bottom: 50px;
@@ -333,6 +323,44 @@ body {
 
 .media-control-btn.inactive {
   background: rgba(239, 68, 68, 0.8);
+}
+
+/* NEW: Minimized media controls */
+.media-controls-minimized {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+}
+
+.media-control-btn-small {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.media-control-btn-small:hover {
+  background: rgba(0, 0, 0, 0.9);
+  transform: scale(1.1);
+}
+
+.media-control-btn-small.active {
+  background: rgba(34, 197, 94, 0.8);
+  border-color: rgba(34, 197, 94, 0.6);
+}
+
+.media-control-btn-small.inactive {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: rgba(239, 68, 68, 0.6);
 }
 
 /* Notification bar - simplified without X button */
@@ -891,7 +919,7 @@ body {
   transform: translateY(-1px);
 }
 
-/* Responsive for smaller screens */
+/* Responsive for tablet screens */
 @media (max-width: 1024px) {
   .game-main {
     flex-direction: column;
@@ -920,6 +948,7 @@ body {
   }
 }
 
+/* Mobile responsive layout */
 @media (max-width: 768px) {
   .App {
     padding: 10px;
@@ -940,7 +969,7 @@ body {
 
   /* Mobile: videos side-by-side container */
   .mobile-videos-container {
-    display: flex; /* Override desktop 'contents' */
+    display: flex !important; /* Override desktop 'contents' */
     gap: 6px; /* Very small gap between videos */
     width: 100%;
     justify-content: center;
@@ -953,11 +982,13 @@ body {
     max-width: 180px;
     height: 200px;
     flex-shrink: 0;
+    order: unset; /* Reset desktop ordering */
   }
   
   .chess-board-container {
     margin-top: 0;
     padding: 12px; /* Reduced padding */
+    order: unset; /* Reset desktop ordering */
   }
   
   .chess-board {
@@ -991,6 +1022,24 @@ body {
 
   .status {
     font-size: 12px; /* Smaller status text */
+  }
+
+  /* Mobile: make media controls even smaller */
+  .media-controls-minimized {
+    bottom: 4px;
+    right: 4px;
+    gap: 2px;
+  }
+
+  .media-control-btn-small {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+
+  .timer {
+    padding: 6px 12px;
+    font-size: 14px;
   }
 }
 
