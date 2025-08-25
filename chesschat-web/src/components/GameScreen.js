@@ -1,4 +1,4 @@
-// src/components/GameScreen.js - Single Exit button, no auto-return after natural game endings
+// src/components/GameScreen.js - Fixed video status and improved game end logic
 import React, { useState, useEffect } from 'react';
 import ChessBoard from './ChessBoard';
 import Timer from './Timer';
@@ -187,7 +187,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
   const [videoConnected, setVideoConnected] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   
-  // FIXED: Add exit confirmation state (no window.confirm)
+  // Exit confirmation state
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   // Initialize game from gameData prop
@@ -258,7 +258,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     }
   }, [board, playerColor]);
 
-  // ENHANCED: Component cleanup with video cleanup
+  // ENHANCED: Component cleanup with video cleanup only on component unmount
   useEffect(() => {
     return () => {
       console.log('🧹 GameScreen component unmounting - forcing video cleanup');
@@ -272,9 +272,6 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
       }
     };
   }, []);
-
-  // REMOVED: Video disconnection monitoring (let players manually exit)
-  // Players should manually exit when they want to leave
 
   // Notification helpers
   const showNotification = (message, type = 'info') => {
@@ -325,21 +322,21 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
       audioManager.playErrorSound();
       setSelectedSquare(null);
       
-      // FIXED: Better error message
+      // Better error message
       if (data.reason && data.reason.includes('not active')) {
         showNotification('Returning to Lobby', 'info');
       }
     };
 
-    // ENHANCED: Game ended handler - NO auto-return, keep video for chat
+    // UPDATED: Game ended handler - NO video cleanup, keep players in video chat
     const handleGameEnded = async (data) => {
       console.log('🏁 Game ended naturally:', data);
       setGameStatus('ended');
       setGameWinner(data.winner);
       setGameEndReason(data.reason);
       
-      // DON'T clean up video - let players chat and manually exit
-      console.log('🎥 Game ended naturally - keeping video for post-game chat');
+      // CRITICAL: DON'T clean up video - let players stay and chat about the game
+      console.log('🎥 Game ended - keeping video chat active for post-game discussion');
       
       // Show celebration message
       if (data.reason === 'checkmate') {
@@ -350,7 +347,28 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
         showGameStatus('STALEMATE!', 'check', 5000);
       } else if (data.reason === 'draw') {
         showGameStatus('DRAW!', 'check', 5000);
+      } else if (data.reason === 'resignation') {
+        showGameStatus('GAME ENDED', 'check', 3000);
       }
+    };
+
+    // NEW: Handle exit game event - this WILL clean up video for both players
+    const handleExitGame = async () => {
+      console.log('🚪 Both players exiting game - cleaning up video and returning to splash');
+      
+      // Clean up video immediately
+      if (dailyService.isCallActive()) {
+        try {
+          await dailyService.leaveCall();
+          console.log('✅ Video cleaned up after exit game');
+        } catch (error) {
+          console.error('❌ Video cleanup error after exit game:', error);
+          dailyService.cleanup();
+        }
+      }
+      
+      // Return to splash
+      onBackToSplash();
     };
 
     const handleTimeUpdate = (data) => {
@@ -361,7 +379,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     const handleError = (data) => {
       console.log('❌ Game error:', data);
       
-      // FIXED: Better error message
+      // Better error message
       if (data.message && data.message.includes('not active')) {
         showNotification('Returning to Lobby', 'info');
       } else {
@@ -373,6 +391,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     socketService.on('move-made', handleMoveMade);
     socketService.on('invalid-move', handleInvalidMove);
     socketService.on('game-ended', handleGameEnded);
+    socketService.on('exit-game', handleExitGame); // NEW event
     socketService.on('time-update', handleTimeUpdate);
     socketService.on('error', handleError);
 
@@ -380,17 +399,18 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
       socketService.off('move-made', handleMoveMade);
       socketService.off('invalid-move', handleInvalidMove);
       socketService.off('game-ended', handleGameEnded);
+      socketService.off('exit-game', handleExitGame); // NEW event
       socketService.off('time-update', handleTimeUpdate);
       socketService.off('error', handleError);
     };
-  }, []);
+  }, [onBackToSplash]);
 
   // Chess move handling
   const handleSquarePress = async (row, col) => {
     if (gameStatus !== 'playing') {
-      // FIXED: Better message when trying to move after game ended
+      // Better message when trying to move after game ended
       if (gameStatus === 'ended') {
-        showNotification('Game has ended - click Exit Game to return to lobby', 'info');
+        showNotification('Game has ended - you can still chat in video!', 'info');
       }
       return;
     }
@@ -450,43 +470,40 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     }
   };
 
-  // FIXED: Single "Exit Game" button - handles both resign and leaving
-  const handleExitGame = () => {
-    console.log('🚪 Player clicked Exit Game');
-    setShowExitConfirm(true);
+  // UPDATED: Handle action button click - different behavior for active vs ended games
+  const handleActionButton = () => {
+    if (gameStatus === 'playing') {
+      // During active game - this is resign
+      console.log('🏳️ Player wants to resign during active game');
+      setShowExitConfirm(true);
+    } else {
+      // After game ended - this is exit game
+      console.log('🚪 Player wants to exit after game ended');
+      setShowExitConfirm(true);
+    }
   };
 
-  // FIXED: Handle exit confirmation - works for both active games and ended games
+  // UPDATED: Handle exit confirmation - different actions for resign vs exit
   const handleExitConfirm = async () => {
-    console.log('🚪 Player confirmed exit - terminating game and cleaning up...');
+    console.log('✅ Player confirmed action');
     setShowExitConfirm(false);
     
     try {
-      // If game is still active, send resignation to end it for both players
       if (gameStatus === 'playing') {
-        console.log('📤 Active game - sending resignation to end game for both players');
+        // During active game - resign (ends game but keeps video)
+        console.log('📤 Resigning from active game - game will end but video continues');
         socketService.resign(roomId, playerColor);
         
         // Small delay to let server process resignation
         await new Promise(resolve => setTimeout(resolve, 300));
       } else {
-        console.log('ℹ️ Game already ended - just cleaning up and exiting');
+        // After game ended - exit game (kills video for both players)
+        console.log('📤 Exiting game - will end video chat for both players');
+        socketService.exitGame(roomId); // NEW socket event
       }
-      
-      // Clean up video and return to splash
-      if (videoRoomUrl && dailyService.isCallActive()) {
-        console.log('📹 Cleaning up video after exit');
-        await dailyService.leaveCall();
-        console.log('✅ Video cleaned up after exit');
-      }
-      
-      // Return to splash
-      onBackToSplash();
       
     } catch (error) {
-      console.error('❌ Error during exit cleanup:', error);
-      dailyService.cleanup();
-      onBackToSplash(); // Still return to splash even if cleanup fails
+      console.error('❌ Error during action:', error);
     }
   };
 
@@ -507,11 +524,11 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     if (gameStatus === 'ended') {
       // Show game result
       if (gameWinner === 'draw') {
-        return `Draw! ${gameEndReason || ''}`;
+        return `Draw! ${gameEndReason || ''} - You can still chat!`;
       } else if (gameWinner === playerColor) {
-        return `You won! ${gameEndReason || ''}`;
+        return `You won! ${gameEndReason || ''} - You can still chat!`;
       } else {
-        return `${opponent?.username || 'Opponent'} won! ${gameEndReason || ''}`;
+        return `${opponent?.username || 'Opponent'} won! ${gameEndReason || ''} - You can still chat!`;
       }
     } else if (currentTurn === playerColor) {
       return 'Your turn';
@@ -520,14 +537,8 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     }
   };
 
-  const getVideoStatus = () => {
-    if (!videoRoomUrl) return null;
-    if (videoConnected) return '🎥';
-    return '📱';
-  };
-
-  // FIXED: Dynamic button text and behavior
-  const getExitButtonText = () => {
+  // UPDATED: Dynamic button text and behavior
+  const getActionButtonText = () => {
     if (gameStatus === 'playing') {
       return 'Resign';
     } else {
@@ -535,7 +546,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     }
   };
 
-  const getExitButtonClass = () => {
+  const getActionButtonClass = () => {
     return 'header-button resign-button'; // Keep same styling
   };
 
@@ -543,7 +554,7 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
     <div className="game-screen">
       <NotificationBar notification={notification} onClose={hideNotification} />
       
-      {/* FIXED: Custom exit confirmation modal */}
+      {/* UPDATED: Custom confirmation modal with different messages */}
       {showExitConfirm && (
         <div className="friends-overlay">
           <div className="invitation-modal">
@@ -553,13 +564,13 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
             <p className="invitation-text">
               {gameStatus === 'playing' 
                 ? 'Are you sure you want to resign this game?'
-                : 'Are you sure you want to leave the game room?'
+                : 'Are you sure you want to exit the game room?'
               }
             </p>
             <p className="invitation-details">
               {gameStatus === 'playing' 
-                ? 'Your opponent will win and both players will return to the lobby.'
-                : 'Both players will return to the lobby and the video chat will end.'
+                ? 'The game will end, but you can continue chatting in video with your opponent.'
+                : 'Both players will be removed from the video chat and returned to the lobby.'
               }
             </p>
             <div className="invitation-actions">
@@ -586,17 +597,17 @@ export default function GameScreen({ currentUser, gameData, onBackToSplash }) {
         </div>
 
         <div className="title-container">
-          <div className="title">ChessChat {getVideoStatus()}</div>
+          <div className="title">ChessChat</div>
           <div className="status">
             {getCurrentPlayerName()}
           </div>
         </div>
 
         <button 
-          className={getExitButtonClass()}
-          onClick={handleExitGame}
+          className={getActionButtonClass()}
+          onClick={handleActionButton}
         >
-          {getExitButtonText()}
+          {getActionButtonText()}
         </button>
       </div>
 

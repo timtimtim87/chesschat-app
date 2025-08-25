@@ -350,12 +350,8 @@ io.on('connection', (socket) => {
           console.log(`🏁 Game ${roomId} ended: ${reason} - Winner: ${winner || 'Draw'}`);
           stopGameTimer(roomId);
           
-          // Clean up video room
-          if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
-            setTimeout(() => {
-              videoService.deleteGameRoom(gameRoom.videoRoom.name);
-            }, 30000);
-          }
+          // UPDATED: Don't clean up video room immediately - let players chat
+          console.log('🎥 Game ended naturally - keeping video room for post-game chat');
         }
         
       } else {
@@ -367,7 +363,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Resign game
+  // UPDATED: Resign game - ends game but keeps video
   socket.on('resign', async (data) => {
     const { roomId, playerColor } = data;
     const gameRoom = gameRooms.get(roomId);
@@ -392,14 +388,48 @@ io.on('connection', (socket) => {
     });
     
     stopGameTimer(roomId);
-    console.log(`🏳️ ${playerColor} resigned in game ${roomId}`);
+    console.log(`🏳️ ${playerColor} resigned in game ${roomId} - keeping video for post-game chat`);
     
-    // Clean up video room
-    if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
-      setTimeout(() => {
-        videoService.deleteGameRoom(gameRoom.videoRoom.name);
-      }, 10000);
+    // UPDATED: Don't clean up video room - let players continue chatting
+    console.log('🎥 Resignation occurred - keeping video room for post-game discussion');
+  });
+
+  // NEW: Exit game handler - removes both players from game and video
+  socket.on('exit-game', async (data) => {
+    const { roomId } = data;
+    const gameRoom = gameRooms.get(roomId);
+    
+    if (!gameRoom) {
+      console.log(`⚠️  Exit game request for non-existent room: ${roomId}`);
+      return;
     }
+    
+    console.log(`🚪 Exit game request for room ${roomId} - removing both players`);
+    
+    // Notify both players to exit
+    io.to(roomId).emit('exit-game', {
+      reason: 'player-exit',
+      message: 'A player has left the game'
+    });
+    
+    // Clean up video room now
+    if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
+      console.log(`🎥 Cleaning up video room: ${gameRoom.videoRoom.name}`);
+      try {
+        await videoService.deleteGameRoom(gameRoom.videoRoom.name);
+        console.log('✅ Video room cleaned up after exit game');
+      } catch (error) {
+        console.error('❌ Error cleaning up video room:', error);
+      }
+    }
+    
+    // Stop game timer
+    stopGameTimer(roomId);
+    
+    // Remove game room
+    gameRooms.delete(roomId);
+    
+    console.log(`✅ Game room ${roomId} fully cleaned up after exit`);
   });
 
   // Handle disconnection
@@ -422,6 +452,41 @@ io.on('connection', (socket) => {
           if (users.length === 0) {
             matchingCodes.delete(code);
           }
+        }
+      }
+      
+      // Check if user was in an active game and handle appropriately
+      for (const [roomId, gameRoom] of gameRooms.entries()) {
+        const wasInGame = (gameRoom.players.white && gameRoom.players.white.socketId === socket.id) ||
+                         (gameRoom.players.black && gameRoom.players.black.socketId === socket.id);
+        
+        if (wasInGame) {
+          console.log(`👋 Player ${user.displayName} disconnected from active game ${roomId}`);
+          
+          // If game was still playing, end it due to disconnection
+          if (gameRoom.gameStatus === 'playing') {
+            gameRoom.gameStatus = 'ended';
+            io.to(roomId).emit('game-ended', {
+              reason: 'disconnection',
+              winner: gameRoom.players.white.socketId === socket.id ? 'black' : 'white',
+              disconnectedPlayer: user.displayName
+            });
+            stopGameTimer(roomId);
+            console.log(`🏁 Game ${roomId} ended due to disconnection`);
+          }
+          
+          // Clean up video room after short delay (in case they reconnect quickly)
+          if (gameRoom.videoRoom && gameRoom.videoRoom.name) {
+            setTimeout(async () => {
+              try {
+                await videoService.deleteGameRoom(gameRoom.videoRoom.name);
+                console.log(`🎥 Cleaned up video room after disconnection: ${gameRoom.videoRoom.name}`);
+              } catch (error) {
+                console.error('❌ Error cleaning up video after disconnection:', error);
+              }
+            }, 10000); // 10 second delay
+          }
+          break;
         }
       }
       
@@ -465,6 +530,9 @@ function startGameTimer(roomId) {
           timeoutPlayer: 'white'
         });
         stopGameTimer(roomId);
+        
+        // UPDATED: Don't clean up video room on timeout - let players chat
+        console.log('🎥 Game ended by timeout - keeping video room for post-game chat');
         return;
       }
     } else {
@@ -478,6 +546,9 @@ function startGameTimer(roomId) {
           timeoutPlayer: 'black'
         });
         stopGameTimer(roomId);
+        
+        // UPDATED: Don't clean up video room on timeout - let players chat
+        console.log('🎥 Game ended by timeout - keeping video room for post-game chat');
         return;
       }
     }

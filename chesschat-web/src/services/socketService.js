@@ -96,6 +96,12 @@ class SocketService {
       this.notifyHandlers('game-ended', data);
     });
 
+    // NEW: Exit game event - when either player exits, both are removed
+    this.socket.on('exit-game', (data) => {
+      console.log('🚪 Exit game event received:', data);
+      this.notifyHandlers('exit-game', data);
+    });
+
     this.socket.on('opponent-disconnected', (data) => {
       console.log('👋 Opponent disconnected:', data);
       this.notifyHandlers('opponent-disconnected', data);
@@ -167,6 +173,18 @@ class SocketService {
         roomId,
         playerColor
       });
+    }
+  }
+
+  // NEW: Exit game method - removes both players from game and video
+  exitGame(roomId) {
+    if (this.socket && this.isConnected) {
+      console.log('🚪 Sending exit game request for room:', roomId);
+      this.socket.emit('exit-game', {
+        roomId
+      });
+    } else {
+      console.error('❌ Socket not connected - cannot exit game');
     }
   }
 

@@ -1,4 +1,4 @@
-// src/App.js - Updated error handling: "game is not active" → "Returning to Lobby"
+// src/App.js - Updated with new exit-game logic
 import React, { useState, useEffect } from 'react';
 import './App.css';
 import GameScreen from './components/GameScreen';
@@ -87,25 +87,40 @@ function App() {
       }
     });
 
-    // ENHANCED: Game ended - clean up video immediately and notify server
+    // UPDATED: Game ended - NO video cleanup, just log the event
     socketService.on('game-ended', async (data) => {
       console.log('🏁 Game ended event received:', data);
       
-      // Immediate video cleanup
+      // CRITICAL: Do NOT clean up video here anymore - let players stay and chat
+      console.log('🎥 Game ended naturally - players can continue video chat');
+      
+      // The GameScreen component will handle showing the "Exit Game" button
+      // Video cleanup will only happen when players explicitly click "Exit Game"
+    });
+
+    // NEW: Exit game event - this WILL clean up video and return to splash
+    socketService.on('exit-game', async (data) => {
+      console.log('🚪 Exit game event received - both players being removed from game');
+      
+      // Immediate video cleanup when exit-game event is received
       try {
         if (dailyService.isCallActive()) {
-          console.log('📹 Game ended - cleaning up video call immediately');
+          console.log('📹 Exit game event - cleaning up video call immediately');
           await dailyService.leaveCall();
-          console.log('✅ Video cleaned up after game end');
+          console.log('✅ Video cleaned up after exit game event');
         }
       } catch (error) {
-        console.error('❌ Video cleanup error after game end:', error);
+        console.error('❌ Video cleanup error after exit game:', error);
         dailyService.cleanup();
       }
       
-      // REMOVED: Auto-return to splash - let players manually exit
-      // Players can now chat after game ends and manually exit when ready
-      console.log('🎮 Game ended naturally - players can chat and manually exit');
+      // Return to splash screen
+      console.log('🏠 Returning to splash after exit game');
+      setGameState('splash');
+      setGameData(null);
+      setCurrentUser(null);
+      setWaitingMessage('');
+      setError('');
     });
 
     return () => {
@@ -128,12 +143,12 @@ function App() {
     socketService.enterMatchCode(roomCode, displayName);
   };
 
-  // CRITICAL FIX: Enhanced handleBackToSplash with proper game termination
+  // UPDATED: Simplified handleBackToSplash - just for emergency cleanup
   const handleBackToSplash = async () => {
-    console.log('🏠 Going back to splash - terminating game and cleaning up...');
+    console.log('🏠 Emergency back to splash - cleaning up...');
     
     // Debug current state
-    console.log('🔍 State BEFORE cleanup:', {
+    console.log('🔍 State BEFORE emergency cleanup:', {
       gameState,
       hasGameData: !!gameData,
       hasCurrentUser: !!currentUser,
@@ -141,55 +156,26 @@ function App() {
       participantCount: dailyService.getParticipantCount()
     });
     
-    // STEP 1: If we're in an active game, send resignation to terminate for both players
-    if (gameState === 'playing' && gameData && gameData.roomId) {
-      try {
-        console.log('📤 Active game detected - sending resignation to terminate game for both players');
-        
-        // Send resignation to server to end the game for BOTH players
-        socketService.resign(gameData.roomId, gameData.color);
-        console.log('✅ Resignation sent to server - game will end for both players');
-        
-        // Small delay to let server process the resignation
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        console.error('❌ Error sending resignation:', error);
-      }
-    }
-    
-    // STEP 2: Clean up video call
+    // Emergency video cleanup (this shouldn't normally be needed with new logic)
     try {
-      const wasVideoActive = dailyService.isCallActive();
-      if (wasVideoActive) {
-        console.log('📹 Active video call detected - cleaning up video');
+      if (dailyService.isCallActive()) {
+        console.log('📹 Emergency video cleanup');
         await dailyService.leaveCall();
-        console.log('✅ Video call cleaned up successfully');
-      } else {
-        console.log('ℹ️ No active video call to clean up');
+        console.log('✅ Emergency video cleanup completed');
       }
     } catch (error) {
-      console.error('❌ Error cleaning up video call:', error);
-      // Force cleanup anyway
+      console.error('❌ Error during emergency video cleanup:', error);
       dailyService.cleanup();
     }
     
-    // STEP 3: Reset all state
+    // Reset all state
     setGameState('splash');
     setGameData(null);
     setCurrentUser(null);
     setWaitingMessage('');
     setError('');
     
-    // Debug state after cleanup
-    console.log('🔍 State AFTER cleanup:', {
-      gameState: 'splash',
-      hasGameData: false,
-      hasCurrentUser: false,
-      dailyServiceActive: dailyService.isCallActive(),
-      participantCount: dailyService.getParticipantCount()
-    });
-    
-    console.log('✅ Returned to splash - game terminated for both players, video cleaned up');
+    console.log('✅ Emergency return to splash completed');
   };
 
   // Render appropriate screen based on game state
